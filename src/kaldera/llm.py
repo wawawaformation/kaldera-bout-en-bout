@@ -7,6 +7,7 @@ déterministe et sert par défaut (tests, démonstration) ; le vrai modèle se b
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Protocol
 
@@ -57,3 +58,15 @@ class LlmSimule:
             f"Description évoquant un {LIBELLES[autres[0]]}"
             f" alors que le sinistre déclaré est un {LIBELLES[type_sinistre]}."
         )
+
+
+def llm_depuis_env() -> Llm:
+    """Simulé par défaut (tests, démo hors ligne) ; `KALDERA_LLM=azure` branche le vrai modèle."""
+    choix = os.environ.get("KALDERA_LLM", "simule")
+    if choix == "simule":
+        return LlmSimule()
+    if choix == "azure":
+        from .llm_azure import depuis_env
+
+        return depuis_env()
+    raise RuntimeError(f"KALDERA_LLM={choix!r} inconnu (valeurs : simule, azure)")

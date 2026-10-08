@@ -8,7 +8,7 @@ from typing import Any
 from .coordinateur import bornes, traiter
 from .equipe import creer_equipe
 from .fiche import assembler
-from .llm import Llm, LlmSimule
+from .llm import Llm, llm_depuis_env
 from .metriques import calculer
 
 __all__ = ["bornes", "traiter_demande", "traiter_lot"]
@@ -22,7 +22,7 @@ def traiter_demande(
     `partenaire_url` n'est pas encore utilisé : la liaison A2A relève du chantier 2.
     `llm` : modèle du motif et de l'analyse de description ; simulé par défaut (addendum n°1).
     """
-    return assembler(traiter(demande, creer_equipe(llm or LlmSimule())))
+    return assembler(traiter(demande, creer_equipe(llm or llm_depuis_env())))
 
 
 def traiter_lot(
