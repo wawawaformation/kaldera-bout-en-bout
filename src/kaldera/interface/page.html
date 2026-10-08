@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaldera — démonstrateur</title>
+<style>
+  :root { --fond:#f6f7f9; --carte:#fff; --texte:#1c2330; --doux:#5c6677; --trait:#d5dae2; --acc:#1f5fbf; --ok:#1d7a46; --ko:#b3261e; --esc:#a85d00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond:#12151b; --carte:#1b2029; --texte:#e6e9ef; --doux:#9aa4b5; --trait:#333b49; --acc:#6fa0f0; --ok:#5cc88a; --ko:#f2877f; --esc:#f0b35c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, sans-serif; background:var(--fond); color:var(--texte); }
+  main { max-width:960px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  h1 { font-size:1.4rem; margin:0; } h2 { font-size:1.1rem; margin:0 0 8px; }
+  section { background:var(--carte); border:1px solid var(--trait); border-radius:8px; padding:16px; }
+  label { display:grid; gap:4px; font-size:.9rem; color:var(--doux); }
+  input, select, textarea, button { font:inherit; padding:8px; border:1px solid var(--trait); border-radius:6px; background:var(--fond); color:var(--texte); }
+  button { cursor:pointer; background:var(--acc); color:#fff; border:0; } button.sec { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  .grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
+  .ligne { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; }
+  .erreurs { color:var(--ko); } .erreurs li { margin-left:16px; }
+  .decision { font-size:1.2rem; font-weight:600; } .acceptee { color:var(--ok); } .refusee { color:var(--ko); } .escalade { color:var(--esc); }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; } th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--trait); }
+  .badge { font-size:.8rem; border:1px solid var(--esc); color:var(--esc); border-radius:10px; padding:1px 8px; }
+  @media (max-width:560px) { .ligne { grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kaldera — démonstrateur</h1>
+
+  <section>
+    <h2>Nouvelle demande</h2>
+    <form id="formulaire">
+      <div class="grille">
+        <label>Référence <input name="reference" placeholder="KAL-26-0901" required></label>
+        <label>Assuré <select name="id_client"></select></label>
+        <label>Contrat <select name="numero_contrat"></select></label>
+      </div>
+      <h2 style="margin-top:16px">Sinistre</h2>
+      <div class="grille">
+        <label>Type <select name="type">
+          <option value="degat_des_eaux">dégât des eaux</option><option value="incendie">incendie</option>
+          <option value="bris_de_glace">bris de glace</option><option value="vol">vol</option></select></label>
+        <label>Survenance <input type="date" name="date_survenance" required></label>
+        <label>Déclaration <input type="date" name="date_declaration" required></label>
+        <label>Montant déclaré (€) <input type="number" step="0.01" name="montant_declare" required></label>
+      </div>
+      <label style="margin-top:12px">Description <textarea name="description" rows="2"></textarea></label>
+      <h2 style="margin-top:16px">Pièces jointes</h2>
+      <div id="pieces"></div>
+      <button type="button" class="sec" data-ajout="pieces">+ pièce</button>
+      <h2 style="margin-top:16px">Dépôts ultérieurs de l'assuré <small>(saisis d'avance, dans l'ordre)</small></h2>
+      <div id="depots"></div>
+      <button type="button" class="sec" data-ajout="depots">+ dépôt</button>
+      <p><button type="submit">Traiter la demande</button></p>
+    </form>
+    <ul id="erreurs" class="erreurs"></ul>
+  </section>
+
+  <section id="resultat" hidden>
+    <h2>Fiche de décision</h2>
+    <div id="fiche"></div>
+  </section>
+
+  <section>
+    <h2>Demandes sauvegardées</h2>
+    <div id="liste"></div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const TYPES = ["facture", "photo", "depot_plainte"];
+
+function creer(nom, attrs = {}, texte = "") {
+  const e = document.createElement(nom);
+  Object.assign(e, attrs);
+  if (texte) e.textContent = texte;   // textContent : jamais d'HTML injecté depuis une donnée
+  return e;
+}
+
+function ajouterLigne(zone, piece = {}) {
+  const l = creer("div", { className: "ligne" });
+  const type = creer("select", { name: "type" });
+  TYPES.forEach((t) => type.append(creer("option", { value: t, selected: t === piece.type }, t)));
+  const lisible = creer("select", { name: "lisible" });
+  [["true", "lisible"], ["false", "illisible"]].forEach(([v, t]) => lisible.append(creer("option", { value: v }, t)));
+  const montant = creer("input", { type: "number", step: "0.01", name: "montant", placeholder: "montant (factures)" });
+  const retirer = creer("button", { type: "button", className: "sec" }, "×");
+  retirer.onclick = () => l.remove();
+  l.append(type, lisible, montant, retirer);
+  $("#" + zone).append(l);
+}
+
+function lireLignes(zone) {
+  return [...$("#" + zone).children].map((l) => {
+    const p = { type: l.querySelector("[name=type]").value, lisible: l.querySelector("[name=lisible]").value === "true" };
+    const m = l.querySelector("[name=montant]").value;
+    if (m !== "") p.montant = Number(m);
+    return p;
+  });
+}
+
+function lireSaisie() {
+  const f = $("#formulaire");
+  const v = (n) => f.elements[n].value;
+  return {
+    reference: v("reference"), id_client: v("id_client"), numero_contrat: v("numero_contrat"),
+    sinistre: {
+      type: v("type"), date_survenance: v("date_survenance"), date_declaration: v("date_declaration"),
+      montant_declare: v("montant_declare") === "" ? null : Number(v("montant_declare")), description: v("description"),
+    },
+    pieces: lireLignes("pieces"), depots: lireLignes("depots"),
+  };
+}
+
+function afficherFiche(fiche) {
+  const z = $("#fiche"); z.replaceChildren();
+  const titre = fiche.issue === "decision" ? `${fiche.decision} — ${fiche.montant_rembourse} €` : `escalade → ${fiche.file}`;
+  z.append(creer("div", { className: "decision " + (fiche.decision || "escalade") }, titre));
+  z.append(creer("p", {}, fiche.motif));
+  if (fiche.mode_degrade) z.append(creer("span", { className: "badge" }, "mode dégradé"));
+  if (fiche.arret) z.append(creer("p", { className: "erreurs" }, "Arrêt : " + fiche.arret.borne));
+  if (fiche.avis_fraude) z.append(creer("p", {}, `Avis anti-fraude : ${fiche.avis_fraude.niveau} (score ${fiche.avis_fraude.score})`));
+  const t = creer("table"); const tete = creer("tr");
+  ["#", "agent", "écrit", "statut", "durée (ms)"].forEach((h) => tete.append(creer("th", {}, h)));
+  t.append(tete);
+  fiche.trace.forEach((e, i) => {
+    const r = creer("tr");
+    [i + 1, e.agent, e.ecrit.join(", ") || "—", e.statut, e.duree_ms].forEach((c) => r.append(creer("td", {}, String(c))));
+    t.append(r);
+  });
+  z.append(t);
+  $("#resultat").hidden = false;
+  $("#resultat").scrollIntoView({ behavior: "smooth" });
+}
+
+async function liste() {
+  const refs = await (await fetch("/api/demandes")).json();
+  const z = $("#liste"); z.replaceChildren();
+  if (!refs.length) z.append(creer("p", {}, "Aucune demande pour l'instant."));
+  refs.forEach((ref) => {
+    const b = creer("button", { type: "button", className: "sec" }, `Rejouer ${ref}`);
+    b.onclick = async () => afficherFiche((await (await fetch(`/api/demandes/${encodeURIComponent(ref)}/rejouer`, { method: "POST" })).json()).fiche);
+    z.append(b, " ");
+  });
+}
+
+$("#formulaire").onsubmit = async (ev) => {
+  ev.preventDefault();
+  $("#erreurs").replaceChildren();
+  const r = await fetch("/api/demandes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lireSaisie()) });
+  const corps = await r.json();
+  if (r.status === 422) { corps.erreurs.forEach((e) => $("#erreurs").append(creer("li", {}, e))); return; }
+  afficherFiche(corps.fiche);
+  liste();
+};
+
+document.querySelectorAll("[data-ajout]").forEach((b) => (b.onclick = () => ajouterLigne(b.dataset.ajout)));
+
+(async () => {
+  for (const [liste_, nom] of [["assures", "id_client"], ["contrats", "numero_contrat"]]) {
+    const ids = await (await fetch("/api/" + liste_)).json();
+    const sel = $("#formulaire").elements[nom];
+    ids.forEach((id) => sel.append(creer("option", { value: id }, id)));
+  }
+  ajouterLigne("pieces", { type: "facture" });
+  liste();
+})();
+</script>
+</body>
+</html>
