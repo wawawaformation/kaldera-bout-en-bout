@@ -28,6 +28,13 @@ def _piece(piece: Any, libelle: str) -> list[str]:
     erreurs = []
     if not isinstance(piece.get("lisible"), bool):
         erreurs.append(f"{libelle} : « lisible » doit être vrai ou faux")
+    verdict = piece.get("verdict")
+    if verdict is not None and not (
+        isinstance(verdict, dict)
+        and verdict.get("garde_fou") in ("A", "B", "humain")
+        and isinstance(verdict.get("raison"), str)
+    ):
+        erreurs.append(f"{libelle} : verdict de lisibilité mal formé")
     if piece["type"] == "facture" and not _montant_valide(piece.get("montant")):
         erreurs.append(f"{libelle} : montant de facture absent ou négatif")
     return erreurs

@@ -99,3 +99,37 @@ def test_demande_inconnue_404(client: TestClient) -> None:
 
 def test_reference_avec_chemin_n_echappe_pas_au_dossier(client: TestClient) -> None:
     assert client.get("/api/demandes/..%2Fassures%2FCL-10021").status_code == 404
+
+
+def test_analyse_d_un_fichier_propose_sans_rien_decider(client: TestClient) -> None:
+    import base64
+
+    contenu = base64.b64encode(b"Facture\nMONTANT: 1850").decode()
+    r = client.post(
+        "/api/pieces/analyser", json={"type": "facture", "nom": "f.txt", "contenu": contenu}
+    )
+    assert r.status_code == 200
+    assert r.json()["montant"] == 1850.0 and r.json()["lisible"] is True
+    assert client.get("/api/demandes").json() == []
+
+
+def test_analyse_contenu_non_base64_422(client: TestClient) -> None:
+    r = client.post("/api/pieces/analyser", json={"type": "photo", "nom": "p.jpg", "contenu": "%%"})
+    assert r.status_code == 422
+
+
+def test_piece_confirmee_avec_verdict_est_recopiee_dans_la_fiche(client: TestClient) -> None:
+    s = saisie(
+        pieces=[
+            {
+                "type": "facture",
+                "lisible": True,
+                "montant": 1850.0,
+                "verdict": {"garde_fou": "humain", "raison": "corrigé"},
+            },
+            {"type": "photo", "lisible": True},
+        ]
+    )
+    assert client.post("/api/demandes", json=s).json()["fiche"]["decision"] == "acceptee"
+    sauvee = client.get("/api/demandes/KAL-26-0901").json()
+    assert sauvee["pieces"][0]["verdict"]["garde_fou"] == "humain"

@@ -108,3 +108,15 @@ def test_depots_valides_comme_les_pieces() -> None:
 def test_toutes_les_erreurs_sont_rapportees() -> None:
     erreurs = valider_saisie(saisie(reference="x", id_client=""))
     assert len(erreurs) == 2
+
+
+def test_verdict_optionnel_mais_valide_s_il_est_present() -> None:
+    bon = {"type": "photo", "lisible": True, "verdict": {"garde_fou": "humain", "raison": "ok"}}
+    assert valider_saisie(saisie(pieces=[bon])) == []
+    for mauvais in (
+        {"garde_fou": "Z", "raison": "x"},
+        {"garde_fou": "A"},
+        "A",
+    ):
+        piece = {"type": "photo", "lisible": True, "verdict": mauvais}
+        assert valider_saisie(saisie(pieces=[piece]))

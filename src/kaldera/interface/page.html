@@ -18,7 +18,8 @@
   input, select, textarea, button { font:inherit; padding:8px; border:1px solid var(--trait); border-radius:6px; background:var(--fond); color:var(--texte); }
   button { cursor:pointer; background:var(--acc); color:#fff; border:0; } button.sec { background:transparent; color:var(--acc); border:1px solid var(--acc); }
   .grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
-  .ligne { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; }
+  .ligne { display:grid; grid-template-columns:1.2fr 2fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:4px; }
+  .note { font-size:.85rem; color:var(--doux); margin:0 0 10px; }
   .erreurs { color:var(--ko); } .erreurs li { margin-left:16px; }
   .decision { font-size:1.2rem; font-weight:600; } .acceptee { color:var(--ok); } .refusee { color:var(--ko); } .escalade { color:var(--esc); }
   table { width:100%; border-collapse:collapse; font-size:.9rem; } th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--trait); }
@@ -82,25 +83,51 @@ function creer(nom, attrs = {}, texte = "") {
 }
 
 function ajouterLigne(zone, piece = {}) {
+  const conteneur = creer("div");
   const l = creer("div", { className: "ligne" });
+  const note = creer("p", { className: "note" });
   const type = creer("select", { name: "type" });
   TYPES.forEach((t) => type.append(creer("option", { value: t, selected: t === piece.type }, t)));
+  const fichier = creer("input", { type: "file", accept: ".png,.jpg,.jpeg,.pdf,.txt" });
   const lisible = creer("select", { name: "lisible" });
   [["true", "lisible"], ["false", "illisible"]].forEach(([v, t]) => lisible.append(creer("option", { value: v }, t)));
   const montant = creer("input", { type: "number", step: "0.01", name: "montant", placeholder: "montant (factures)" });
   const retirer = creer("button", { type: "button", className: "sec" }, "×");
-  retirer.onclick = () => l.remove();
-  l.append(type, lisible, montant, retirer);
-  $("#" + zone).append(l);
+  retirer.onclick = () => conteneur.remove();
+  // proposition du modèle (CR.5.3) : gardée pour détecter une correction humaine (CR.5.2, N1)
+  conteneur.proposition = null;
+  fichier.onchange = async () => {
+    const f = fichier.files[0];
+    if (!f) { conteneur.proposition = null; note.textContent = ""; return; }
+    const octets = new Uint8Array(await f.arrayBuffer());
+    let binaire = ""; octets.forEach((o) => (binaire += String.fromCharCode(o)));
+    const r = await fetch("/api/pieces/analyser", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: type.value, nom: f.name, contenu: btoa(binaire) }) });
+    const p = await r.json();
+    if (!r.ok) { note.textContent = (p.erreurs || ["analyse impossible"]).join(", "); return; }
+    conteneur.proposition = p;
+    lisible.value = String(p.lisible);
+    montant.value = p.montant ?? "";
+    note.textContent = `Proposé (garde-fou ${p.verdict.garde_fou}) : ${p.verdict.raison}` +
+      (type.value === "facture" && p.montant == null && p.lisible ? " — montant non trouvé, à saisir." : "") + " À confirmer ou corriger.";
+  };
+  l.append(type, fichier, lisible, montant, retirer);
+  conteneur.append(l, note);
+  conteneur.lire = () => {
+    const piece = { type: type.value, lisible: lisible.value === "true" };
+    if (montant.value !== "") piece.montant = Number(montant.value);
+    const p = conteneur.proposition;
+    if (p) {
+      const corrige = piece.lisible !== p.lisible || (type.value === "facture" && p.lisible && piece.montant !== p.montant);
+      piece.verdict = corrige ? { garde_fou: "humain", raison: "corrigé par le démonstrateur (proposé : " + p.verdict.raison + ")" } : p.verdict;
+    }
+    return piece;
+  };
+  $("#" + zone).append(conteneur);
 }
 
 function lireLignes(zone) {
-  return [...$("#" + zone).children].map((l) => {
-    const p = { type: l.querySelector("[name=type]").value, lisible: l.querySelector("[name=lisible]").value === "true" };
-    const m = l.querySelector("[name=montant]").value;
-    if (m !== "") p.montant = Number(m);
-    return p;
-  });
+  return [...$("#" + zone).children].map((c) => c.lire());
 }
 
 function lireSaisie() {
