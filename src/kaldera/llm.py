@@ -61,12 +61,12 @@ class LlmSimule:
 
 
 def llm_depuis_env() -> Llm:
-    """Simulé par défaut (tests, démo hors ligne) ; `KALDERA_LLM=azure` branche le vrai modèle."""
+    """Simulé par défaut (tests, démo hors ligne) ; `KALDERA_LLM=azure|ollama` branche un vrai modèle."""
     choix = os.environ.get("KALDERA_LLM", "simule")
     if choix == "simule":
         return LlmSimule()
-    if choix == "azure":
-        from .llm_azure import depuis_env
+    if choix in ("azure", "ollama"):
+        from . import llm_openai
 
-        return depuis_env()
-    raise RuntimeError(f"KALDERA_LLM={choix!r} inconnu (valeurs : simule, azure)")
+        return llm_openai.depuis_env_azure() if choix == "azure" else llm_openai.depuis_env_ollama()
+    raise RuntimeError(f"KALDERA_LLM={choix!r} inconnu (valeurs : simule, azure, ollama)")

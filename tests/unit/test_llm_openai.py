@@ -1,4 +1,4 @@
-"""Client Azure derrière `Llm` : appels HTTP simulés, aucun réseau, aucune clé réelle."""
+"""Client OpenAI v1 (Azure, Ollama cloud) derrière `Llm` : HTTP simulé, aucun réseau, aucune clé réelle."""
 
 from __future__ import annotations
 
@@ -8,21 +8,21 @@ import httpx
 import pytest
 
 from kaldera.llm import LlmSimule, llm_depuis_env
-from kaldera.llm_azure import LlmAzure
+from kaldera.llm_openai import LlmOpenAI
 
 ENDPOINT = "https://exemple.services.ai.azure.com/openai/v1"
 
 
 def client(
     reponse: str | None = "Texte.", statut: int = 200, vus: list[httpx.Request] | None = None
-) -> LlmAzure:
+) -> LlmOpenAI:
     def gerer(requete: httpx.Request) -> httpx.Response:
         if vus is not None:
             vus.append(requete)
         corps = {"choices": [{"message": {"content": reponse}}]}
         return httpx.Response(statut, json=corps if statut == 200 else {"error": "x"})
 
-    return LlmAzure(ENDPOINT, "cle-secrete", "gpt-mini", transport=httpx.MockTransport(gerer))
+    return LlmOpenAI(ENDPOINT, "cle-secrete", "gpt-mini", transport=httpx.MockTransport(gerer))
 
 
 def test_requete_conforme_a_l_api_openai_v1() -> None:
@@ -76,7 +76,7 @@ def test_erreur_http_leve_sans_divulguer_la_cle() -> None:
 
 
 def test_reponse_mal_formee_leve() -> None:
-    llm = LlmAzure(
+    llm = LlmOpenAI(
         ENDPOINT, "c", "m", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
     )
     with pytest.raises(Exception):  # noqa: B017, PT011
@@ -94,7 +94,7 @@ def test_depuis_env_azure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AZURE_AI_API_KEY", "k")
     monkeypatch.setenv("AZURE_MODEL_GPT_MINI", "gpt-mini")
     llm = llm_depuis_env()
-    assert isinstance(llm, LlmAzure)
+    assert isinstance(llm, LlmOpenAI)
 
 
 def test_depuis_env_azure_sans_configuration_est_une_erreur_claire(
@@ -117,3 +117,51 @@ def test_le_type_est_donne_au_modele_en_clair_pas_en_identifiant() -> None:
     vus: list[httpx.Request] = []
     client("RAS", vus=vus).point_de_vigilance("bris_de_glace", "Cambriolage")
     assert "bris de glace" in json.loads(vus[0].content)["messages"][-1]["content"]
+
+
+def test_ollama_utilise_l_en_tete_bearer_et_max_tokens() -> None:
+    vus: list[httpx.Request] = []
+
+    def gerer(requete: httpx.Request) -> httpx.Response:
+        vus.append(requete)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    llm = LlmOpenAI(
+        "https://ollama.exemple/v1",
+        "cle-ollama",
+        "glm",
+        auth="bearer",
+        transport=httpx.MockTransport(gerer),
+    )
+    llm.rediger_motif({"motif": "m"})
+    assert (
+        vus[0].headers["authorization"] == "Bearer cle-ollama" and "api-key" not in vus[0].headers
+    )
+    corps = json.loads(vus[0].content)
+    assert corps["max_tokens"] == 500 and "max_completion_tokens" not in corps
+
+
+def test_depuis_env_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KALDERA_LLM", "ollama")
+    monkeypatch.setenv("OLLAMA_ENDPOINT", "https://ollama.exemple/v1")
+    monkeypatch.setenv("OLLAMA_API_KEY", "k")
+    monkeypatch.setenv("OLLAMA_MODEL", "glm-5.3-flash:cloud")
+    assert isinstance(llm_depuis_env(), LlmOpenAI)
+
+
+def test_depuis_env_ollama_sans_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KALDERA_LLM", "ollama")
+    for v in ("OLLAMA_ENDPOINT", "OLLAMA_API_KEY", "OLLAMA_MODEL"):
+        monkeypatch.delenv(v, raising=False)
+    with pytest.raises(RuntimeError, match="OLLAMA_ENDPOINT"):
+        llm_depuis_env()
+
+
+def test_les_espaces_en_fin_de_valeur_sont_ignores(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KALDERA_LLM", "azure")
+    monkeypatch.setenv("AZURE_AI_ENDPOINT", ENDPOINT + "   ")
+    monkeypatch.setenv("AZURE_AI_API_KEY", "k  ")
+    monkeypatch.setenv("AZURE_MODEL_GPT_MINI", "gpt-mini     ")
+    llm = llm_depuis_env()
+    assert isinstance(llm, LlmOpenAI) and llm._modele == "gpt-mini" and llm._cle == "k"  # noqa: SLF001
+    assert llm._url == f"{ENDPOINT}/chat/completions"  # noqa: SLF001
