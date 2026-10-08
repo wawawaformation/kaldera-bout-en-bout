@@ -56,7 +56,7 @@ def lancer(**remplacements: Any) -> dict[str, Any]:
 
 def test_bornes_fixees_par_la_conception() -> None:
     b = bornes()
-    assert (b["etapes_max"], b["duree_max_s"]) == (8, 10)
+    assert (b["etapes_max"], b["duree_max_s"]) == (9, 10)
     assert (b["delai_etape_s"], b["delai_passerelle_s"], b["abandon_partenaire_s"]) == (1, 3, 2.5)
 
 
@@ -107,8 +107,8 @@ def test_estimation_nulle_va_directement_a_decision() -> None:
 
 def test_boucle_sans_fin_est_coupee_par_etapes_max_bcl_01() -> None:
     fiche = lancer(pieces=lambda v: {"pieces": {"statut": "incomplet"}})
-    assert len(fiche["trace"]) == 8
-    assert agents_appeles(fiche) == ["eligibilite", *["pieces"] * 6, "decision"]
+    assert len(fiche["trace"]) == 9
+    assert agents_appeles(fiche) == ["eligibilite", *["pieces"] * 7, "decision"]
     assert fiche["arret"] == {"borne": "etapes_max"}
     assert fiche["issue"] == {"issue": "decision"}
 
@@ -202,3 +202,102 @@ def test_la_demande_d_origine_n_est_pas_modifiee() -> None:
     avant = repr(DEMANDE)
     lancer()
     assert repr(DEMANDE) == avant
+
+
+# --- Addendum n°1 : agent `analyse_description` dans la fourche, bornes 9 / 2 s -----------------
+
+AVEC_DESCRIPTION = {
+    **DEMANDE,
+    "sinistre": {**DEMANDE["sinistre"], "description": "Cambriolage."},
+}
+
+
+def lancer_avec_description(**remplacements: Any) -> dict[str, Any]:
+    par_defaut = {
+        "analyse_description": lambda v: {
+            "analyse_description": {"statut": "obtenu", "point": None}
+        }
+    }
+    e = equipe(**{**par_defaut, **remplacements})
+    e.pop("_appels")
+    return traiter(AVEC_DESCRIPTION, e)
+
+
+def test_bornes_de_l_addendum() -> None:
+    b = bornes()
+    assert (b["etapes_max"], b["delai_decision_s"]) == (9, 2)
+
+
+def test_analyse_description_dans_la_fourche_si_description_non_vide() -> None:
+    fiche = lancer_avec_description()
+    assert agents_appeles(fiche) == [
+        "eligibilite",
+        "analyse_description",
+        "pieces",
+        "estimation",
+        "passerelle_fraude",
+        "decision",
+    ]
+
+
+def test_description_vide_pas_d_etape_d_analyse() -> None:
+    assert "analyse_description" not in agents_appeles(lancer())
+
+
+def test_la_vue_de_l_analyse_ne_contient_que_le_type_et_la_description() -> None:
+    vues: list[dict[str, Any]] = []
+
+    def espion(vue: dict[str, Any]) -> dict[str, Any]:
+        vues.append(vue)
+        return {"analyse_description": {"statut": "obtenu", "point": None}}
+
+    lancer_avec_description(analyse_description=espion)
+    assert vues[0] == {"type_sinistre": "vol", "description": "Cambriolage."}
+
+
+def test_decision_recoit_le_point_pas_la_description() -> None:
+    vues: list[dict[str, Any]] = []
+
+    def decision(vue: dict[str, Any]) -> dict[str, Any]:
+        vues.append(vue)
+        return {"issue": {"issue": "decision"}}
+
+    lancer_avec_description(
+        analyse_description=lambda v: {"analyse_description": {"statut": "obtenu", "point": "P."}},
+        decision=decision,
+    )
+    assert vues[0]["analyse_description"] == {"statut": "obtenu", "point": "P."}
+    assert "Cambriolage" not in repr(vues[0])
+
+
+def test_analyse_indisponible_n_arrete_pas_l_equipe() -> None:
+    fiche = lancer_avec_description(
+        analyse_description=lambda v: {
+            "analyse_description": {"statut": "indisponible", "point": None}
+        }
+    )
+    assert fiche["arret"] is None
+    etape = next(e for e in fiche["trace"] if e["agent"] == "analyse_description")
+    assert etape["statut"] == "indisponible" and etape["ecrit"] == ["analyse_description"]
+    assert agents_appeles(fiche)[-1] == "decision"
+
+
+def test_boucle_sans_fin_avec_description_reste_dans_9_etapes() -> None:
+    fiche = lancer_avec_description(pieces=lambda v: {"pieces": {"statut": "incomplet"}})
+    assert len(fiche["trace"]) == 9 and fiche["arret"] == {"borne": "etapes_max"}
+    assert agents_appeles(fiche)[-1] == "decision"
+
+
+def test_delai_de_decision_de_2_s() -> None:
+    import kaldera.coordinateur as c
+
+    assert (
+        c._delai("decision") == 2 and c._delai("pieces") == 1 and c._delai("passerelle_fraude") == 3
+    )
+
+
+def test_pire_cas_legitime_tient_en_10_s_sans_marge() -> None:
+    b = bornes()
+    # fourche (1 s) + 3 tours de complément + estimation + passerelle + decision
+    pire = b["delai_etape_s"] * (1 + 3 + 1) + b["delai_passerelle_s"] + b["delai_decision_s"]
+    assert pire == b["duree_max_s"]

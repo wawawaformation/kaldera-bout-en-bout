@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from .delai import executer_avec_delai
 from .memoire import Memoire
 
 # Un agent reçoit une vue en lecture seule et rend {section: valeur} ; il n'écrit jamais lui-même.
@@ -15,11 +15,14 @@ Agent = Callable[[dict[str, Any]], dict[str, Any]]
 
 # Valeurs déduites de la spec, du contrat et des scénarios, pas mesurées : donc provisoires (Q3.d).
 BORNES: dict[str, float] = {
-    "etapes_max": 8,
+    "etapes_max": 9,  # addendum n°1 : +1 étape (analyse_description)
     "duree_max_s": 10,
     "delai_etape_s": 1,  # code déterministe : ne sert qu'à couper un agent bloqué
     "delai_passerelle_s": 3,  # contrat A2A : abandon au plus tard à 3 s
     "abandon_partenaire_s": 2.5,  # laisse 0,5 s à la passerelle pour publier « indisponible »
+    "delai_decision_s": 2,  # addendum n°1 : le LLM du motif a 1,5 s, 0,5 s pour le repli
+    "delai_llm_decision_s": 1.5,
+    "delai_llm_analyse_s": 0.8,  # sous le délai de l'étape : l'agent publie « indisponible » lui-même
 }
 
 
@@ -29,7 +32,11 @@ def bornes() -> dict[str, float]:
 
 
 def _delai(agent: str) -> float:
-    return BORNES["delai_passerelle_s"] if agent == "passerelle_fraude" else BORNES["delai_etape_s"]
+    if agent == "passerelle_fraude":
+        return BORNES["delai_passerelle_s"]
+    if agent == "decision":
+        return BORNES["delai_decision_s"]
+    return BORNES["delai_etape_s"]
 
 
 def _vue(memoire: Memoire, agent: str) -> dict[str, Any]:
@@ -38,6 +45,12 @@ def _vue(memoire: Memoire, agent: str) -> dict[str, Any]:
     lire = memoire.lire
     if agent == "eligibilite":
         return {"contrat": demande["contrat"], "sinistre": demande["sinistre"]}
+    if agent == "analyse_description":
+        # le seul agent qui lit la description brute ; elle ne va nulle part ailleurs
+        return {
+            "type_sinistre": demande["sinistre"]["type"],
+            "description": demande["sinistre"]["description"],
+        }
     if agent == "pieces":
         return {
             "sinistre": demande["sinistre"],
@@ -69,28 +82,11 @@ def _vue(memoire: Memoire, agent: str) -> dict[str, Any]:
         "pieces": lire("pieces"),
         "estimation": lire("estimation"),
         "avis_fraude": lire("avis_fraude"),
+        "analyse_description": lire(
+            "analyse_description"
+        ),  # le point de vigilance, pas la description
         "arret": lire("arret"),
     }
-
-
-def _executer(agent: Agent, vue: dict[str, Any], delai_s: float) -> dict[str, Any]:
-    """Exécute l'agent dans un fil et le coupe au-delà de son délai (jamais de relance)."""
-    resultat: dict[str, Any] = {}
-
-    def cible() -> None:
-        try:
-            resultat["valeur"] = agent(vue)
-        except Exception as exc:  # noqa: BLE001 : toute erreur d'agent est un échec d'étape
-            resultat["erreur"] = exc
-
-    fil = threading.Thread(target=cible, daemon=True)
-    fil.start()
-    fil.join(delai_s)
-    if fil.is_alive():
-        raise TimeoutError
-    if "erreur" in resultat:
-        raise resultat["erreur"]
-    return resultat["valeur"]
 
 
 class _Deroulement:
@@ -127,10 +123,13 @@ class _Deroulement:
         ecrit: list[str] = []
         statut, arret = "ok", None
         try:
-            sections = _executer(self.equipe[nom], _vue(self.memoire, nom), _delai(nom))
+            vue = _vue(self.memoire, nom)
+            sections = executer_avec_delai(lambda: self.equipe[nom](vue), _delai(nom))
             for section, valeur in sections.items():
                 self.memoire.ecrire(nom, section, valeur)  # table de propriété contrôlée ici
                 ecrit.append(section)
+                if isinstance(valeur, dict) and valeur.get("statut") == "indisponible":
+                    statut = "indisponible"  # service externe ou LLM indisponible : pas un échec
         except TimeoutError:
             statut, arret = "echec", "delai_agent"
         except Exception:  # noqa: BLE001 : y compris ErreurEcriture (écriture hors de sa section)
@@ -162,7 +161,13 @@ def traiter(demande: dict[str, Any], equipe: dict[str, Agent]) -> dict[str, Any]
 def _parcours(d: _Deroulement) -> bool:
     """Parcours fixe ; retourne False dès qu'une étape impose de conclure."""
     memoire = d.memoire
-    if not (d.lancer("eligibilite") and d.lancer("pieces")):
+    if not d.lancer("eligibilite"):
+        return False
+    # fourche eligibilite || analyse_description || pieces : l'analyse n'a lieu que s'il y a un texte
+    if memoire.lire("demande")["sinistre"].get("description", "").strip():
+        if not d.lancer("analyse_description"):
+            return False
+    if not d.lancer("pieces"):
         return False
     while memoire.lire("pieces")["statut"] == "incomplet":
         if not d.lancer("pieces"):

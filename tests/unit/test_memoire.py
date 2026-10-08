@@ -82,3 +82,11 @@ def test_la_fiche_reprend_la_reference_et_les_sections(memoire: Memoire) -> None
     assert fiche["eligibilite"] == {"eligible": True}
     assert fiche["arret"] is None
     assert fiche["trace"] == []
+
+
+def test_analyse_description_a_son_propre_ecrivain(memoire: Memoire) -> None:
+    memoire.ecrire("analyse_description", "analyse_description", {"statut": "obtenu"})
+    with pytest.raises(ErreurEcriture):
+        memoire.ecrire("decision", "analyse_description", {})
+    with pytest.raises(ErreurEcriture):
+        memoire.ecrire("analyse_description", "analyse_description", {"statut": "autre"})

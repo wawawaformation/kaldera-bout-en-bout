@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import decision, eligibilite, estimation, passerelle_fraude, pieces
-from .coordinateur import Agent
+from . import analyse_description, decision, eligibilite, estimation, passerelle_fraude, pieces
+from .coordinateur import BORNES, Agent
+from .llm import Llm
 
 
 def _pieces(vue: dict[str, Any]) -> dict[str, Any]:
@@ -17,10 +18,17 @@ def _estimation(vue: dict[str, Any]) -> dict[str, Any]:
     return {"estimation": resultat}
 
 
-EQUIPE: dict[str, Agent] = {
-    "eligibilite": lambda vue: {"eligibilite": eligibilite.evaluer(vue)},
-    "pieces": _pieces,
-    "estimation": _estimation,
-    "passerelle_fraude": lambda vue: {"avis_fraude": passerelle_fraude.evaluer(vue)},
-    "decision": decision.decider,
-}
+def creer_equipe(llm: Llm) -> dict[str, Agent]:
+    """Les deux seuls agents qui utilisent un LLM sont `decision` (motif) et `analyse_description`."""
+    return {
+        "eligibilite": lambda vue: {"eligibilite": eligibilite.evaluer(vue)},
+        "analyse_description": lambda vue: {
+            "analyse_description": analyse_description.analyser(
+                vue, llm, BORNES["delai_llm_analyse_s"]
+            )
+        },
+        "pieces": _pieces,
+        "estimation": _estimation,
+        "passerelle_fraude": lambda vue: {"avis_fraude": passerelle_fraude.evaluer(vue)},
+        "decision": lambda vue: decision.decider(vue, llm, BORNES["delai_llm_decision_s"]),
+    }

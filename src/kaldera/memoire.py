@@ -10,6 +10,7 @@ PROPRIETAIRES = {
     "eligibilite": "eligibilite",
     "pieces": "pieces",
     "estimation": "estimation",
+    "analyse_description": "analyse_description",
     "avis_fraude": "passerelle_fraude",
     "issue": "decision",
 }

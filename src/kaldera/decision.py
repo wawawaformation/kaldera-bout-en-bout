@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import regles
+from .delai import executer_avec_delai
+from .llm import Llm
 
 SEUIL_MODE_DEGRADE = 1_500.0  # spec §9
 
@@ -73,14 +76,80 @@ def _regles(vue: dict[str, Any]) -> dict[str, Any]:
     return _issue("acceptee", estime, None, "Demande acceptée.")
 
 
-def decider(vue: dict[str, Any]) -> dict[str, Any]:
-    """Conclut la demande ; en cas d'échec interne, écrit un X6 de secours (gabarit constant)."""
+LONGUEUR_MOTIF_MAX = 600
+CHAMPS_ISSUE = ("issue", "decision", "montant_rembourse", "file", "motif", "mode_degrade")
+
+
+def _nombres(texte: str) -> set[float]:
+    """Les nombres d'un texte (« 10 000 € » compte pour 10000), espaces fines comprises."""
+    brut = re.findall(r"\d[\d\s\u00a0\u202f]*(?:[.,]\d+)?", texte)
+    return {float(re.sub(r"\s", "", n).replace(",", ".")) for n in brut}
+
+
+def _avec_vigilance(issue: dict[str, Any], vue: dict[str, Any]) -> dict[str, Any]:
+    """Addendum n°1, B1 : le point de vigilance s'ajoute au motif d'une escalade, jamais à l'issue."""
+    analyse = vue.get("analyse_description") or {}
+    if issue["issue"] == "escalade" and analyse.get("statut") == "obtenu" and analyse.get("point"):
+        issue["motif"] = f"{issue['motif']} Point de vigilance : {analyse['point']}"
+        issue["vigilance"] = analyse["point"]
+    return issue
+
+
+def _motif_fidele(candidat: Any, issue: dict[str, Any]) -> bool:
+    """Le texte du LLM n'est retenu que s'il dit la même chose que l'issue fixée par les règles."""
+    if not isinstance(candidat, str) or not candidat.strip() or len(candidat) > LONGUEUR_MOTIF_MAX:
+        return False
+    bas = candidat.lower()
+    chiffres_attendus = _nombres(issue["motif"])
+    autorises = chiffres_attendus | (
+        {float(issue["montant_rembourse"])} if issue["montant_rembourse"] else set()
+    )
+    if not chiffres_attendus <= _nombres(candidat) or not _nombres(candidat) <= autorises:
+        return False
+    if issue["decision"] == "acceptee" and "refus" in bas:
+        return False
+    if issue["decision"] == "refusee" and "accept" in bas:
+        return False
+    if issue["issue"] == "escalade" and ("accept" in bas or "refus" in bas):
+        return False
+    if issue["file"] == "gestionnaire" and "cellule" in bas:
+        return False
+    if issue["file"] == "cellule_fraude" and "gestionnaire" in bas:
+        return False
+    if issue["mode_degrade"] and "dégradé" not in bas:
+        return False
+    return issue.get("vigilance", "") in candidat
+
+
+def _reformuler(issue: dict[str, Any], llm: Llm, delai_s: float) -> str:
+    """A1 : motif reformulé par le LLM, ou motif du gabarit en cas d'échec, de lenteur ou d'infidélité."""
+    public = {c: issue[c] for c in CHAMPS_ISSUE}
+    try:
+        candidat = executer_avec_delai(lambda: llm.rediger_motif(public), delai_s)
+    except Exception:  # noqa: BLE001 : le LLM ne doit jamais empêcher de conclure
+        return str(issue["motif"])
+    return candidat.strip() if _motif_fidele(candidat, issue) else str(issue["motif"])
+
+
+def decider(
+    vue: dict[str, Any], llm: Llm | None = None, delai_llm_s: float = 1.5
+) -> dict[str, Any]:
+    """Conclut la demande ; en cas d'échec interne, écrit un X6 de secours (gabarit constant).
+
+    Les règles fixent l'issue ; le LLM (A1) ne reformule que le motif, sauf pour X6.
+    """
     try:
         if vue["arret"]:
             borne = vue["arret"]["borne"]
-            issue = _issue(None, None, "gestionnaire", f"Traitement interrompu : {borne}.")
+            issue = _avec_vigilance(
+                _issue(None, None, "gestionnaire", f"Traitement interrompu : {borne}."), vue
+            )
+            llm = None  # X6 garde le gabarit
         else:
-            issue = _regles(vue)
+            issue = _avec_vigilance(_regles(vue), vue)
+        if llm is not None:
+            issue["motif"] = _reformuler(issue, llm, delai_llm_s)
+        issue.pop("vigilance", None)
     except Exception:  # noqa: BLE001 : filet de sécurité, jamais de relance
         issue = _issue(None, None, "gestionnaire", "Traitement interrompu : échec de la décision.")
         issue["secours"] = True  # le coordinateur en déduit arret = echec_agent
