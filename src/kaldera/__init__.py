@@ -2,31 +2,33 @@
 
 from __future__ import annotations
 
-from time import perf_counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from .orchestrateur import Orchestrateur
+from .coordinateur import bornes, traiter
+from .equipe import EQUIPE
+from .fiche import assembler
+from .metriques import calculer
 
-__all__ = ["traiter_demande", "traiter_lot"]
+__all__ = ["bornes", "traiter_demande", "traiter_lot"]
 
 
 def traiter_demande(
     demande: dict[str, Any], *, partenaire_url: str | None = None
 ) -> dict[str, Any]:
-    """Traite une demande et retourne sa fiche de décision."""
-    return Orchestrateur(partenaire_url).traiter(demande)
+    """Traite une demande et retourne sa fiche de décision.
+
+    `partenaire_url` n'est pas encore utilisé : la liaison A2A relève du chantier 2.
+    """
+    return assembler(traiter(demande, EQUIPE))
 
 
 def traiter_lot(
     demandes: list[dict[str, Any]], *, partenaire_url: str | None = None
 ) -> dict[str, Any]:
-    """Traite un lot de demandes ; retourne les fiches (dans l'ordre) et les métriques."""
-    debut = perf_counter()
-    fiches = [traiter_demande(d, partenaire_url=partenaire_url) for d in demandes]
-    return {
-        "fiches": fiches,
-        "metriques": {
-            "demandes": len(fiches),
-            "duree_totale_ms": round((perf_counter() - debut) * 1000, 2),
-        },
-    }
+    """Traite un lot : une demande n'attend jamais une autre (spec §12), ordre conservé."""
+    with ThreadPoolExecutor(max_workers=max(len(demandes), 1)) as pool:
+        fiches = list(
+            pool.map(lambda d: traiter_demande(d, partenaire_url=partenaire_url), demandes)
+        )
+    return {"fiches": fiches, "metriques": calculer(fiches)}
