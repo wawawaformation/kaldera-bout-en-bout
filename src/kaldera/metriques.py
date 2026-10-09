@@ -6,7 +6,7 @@ from typing import Any
 
 
 def calculer(fiches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """`appels_externes` vaudra le nombre d'appels au partenaire une fois le chantier 2 branché."""
+    """`echecs` : toute étape non `ok` (Q9.a) ; `appels_externes` : requêtes réellement envoyées."""
     etapes: dict[str, list[dict[str, Any]]] = {}
     for fiche in fiches:
         for etape in fiche["trace"]:
@@ -14,9 +14,9 @@ def calculer(fiches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
         agent: {
             "appels": len(liste),
-            "echecs": sum(e["statut"] == "echec" for e in liste),
+            "echecs": sum(e["statut"] != "ok" for e in liste),
             "latence_ms": round(sum(e["duree_ms"] for e in liste) / len(liste), 2),
-            "appels_externes": 0,
+            "appels_externes": sum(e.get("appels_externes", 0) for e in liste),
         }
         for agent, liste in etapes.items()
     }

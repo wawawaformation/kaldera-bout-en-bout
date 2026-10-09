@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
-from . import analyse_description, decision, eligibilite, estimation, passerelle_fraude, pieces
+from . import a2a, analyse_description, decision, eligibilite, estimation, passerelle_fraude, pieces
 from .coordinateur import BORNES, Agent
 from .llm import Llm
 
@@ -18,7 +19,7 @@ def _estimation(vue: dict[str, Any]) -> dict[str, Any]:
     return {"estimation": resultat}
 
 
-def creer_equipe(llm: Llm) -> dict[str, Agent]:
+def creer_equipe(llm: Llm, partenaire_url: str | None = None) -> dict[str, Agent]:
     """Les deux seuls agents qui utilisent un LLM sont `decision` (motif) et `analyse_description`."""
     return {
         "eligibilite": lambda vue: {"eligibilite": eligibilite.evaluer(vue)},
@@ -29,6 +30,11 @@ def creer_equipe(llm: Llm) -> dict[str, Agent]:
         },
         "pieces": _pieces,
         "estimation": _estimation,
-        "passerelle_fraude": lambda vue: {"avis_fraude": passerelle_fraude.evaluer(vue)},
+        "passerelle_fraude": lambda vue: {
+            "avis_fraude": passerelle_fraude.evaluer(
+                vue,
+                partial(a2a.interroger, url=partenaire_url, abandon_s=BORNES["abandon_partenaire_s"]),
+            )
+        },
         "decision": lambda vue: decision.decider(vue, llm, BORNES["delai_llm_decision_s"]),
     }

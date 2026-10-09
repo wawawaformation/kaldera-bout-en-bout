@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from .a2a import ErreurKaldera
 from .delai import executer_avec_delai
 from .memoire import Memoire
 
@@ -22,7 +23,8 @@ BORNES: dict[str, float] = {
     "abandon_partenaire_s": 2.5,  # laisse 0,5 s à la passerelle pour publier « indisponible »
     "delai_decision_s": 2,  # addendum n°1 : le LLM du motif a 1,5 s, 0,5 s pour le repli
     "delai_llm_decision_s": 1.5,
-    "delai_llm_analyse_s": 0.8,  # sous le délai de l'étape : l'agent publie « indisponible » lui-même
+    "delai_analyse_s": 2,  # addendum n°3 : 0,8 s faisait expirer le LLM réel (0,5 à 1,2 s)
+    "delai_llm_analyse_s": 1.7,  # sous le délai de l'étape : l'agent publie « indisponible » lui-même
 }
 
 
@@ -36,6 +38,8 @@ def _delai(agent: str) -> float:
         return BORNES["delai_passerelle_s"]
     if agent == "decision":
         return BORNES["delai_decision_s"]
+    if agent == "analyse_description":
+        return BORNES["delai_analyse_s"]
     return BORNES["delai_etape_s"]
 
 
@@ -122,6 +126,8 @@ class _Deroulement:
         horodatage = datetime.now(timezone.utc).isoformat()
         ecrit: list[str] = []
         statut, arret = "ok", None
+        cause: str | None = None  # code court de l'échec, jamais le contenu reçu (Q6.b)
+        appels_externes = 0
         try:
             vue = _vue(self.memoire, nom)
             sections = executer_avec_delai(lambda: self.equipe[nom](vue), _delai(nom))
@@ -130,20 +136,29 @@ class _Deroulement:
                 ecrit.append(section)
                 if isinstance(valeur, dict) and valeur.get("statut") == "indisponible":
                     statut = "indisponible"  # service externe ou LLM indisponible : pas un échec
+                if isinstance(valeur, dict):
+                    cause = valeur.get("cause") or cause
+                    appels_externes += bool(valeur.get("appel_envoye"))
         except TimeoutError:
             statut, arret = "echec", "delai_agent"
+        except ErreurKaldera as exc:  # défaut de notre côté (jeton, requête, doublon) : X6
+            statut, arret, cause = "echec", "echec_agent", exc.cause
+            appels_externes += exc.appel_envoye
         except Exception:  # noqa: BLE001 : y compris ErreurEcriture (écriture hors de sa section)
             statut, arret = "echec", "echec_agent"
         self.nb_etapes += 1
-        self.memoire.ajouter_trace(
-            {
-                "agent": nom,
-                "ecrit": ecrit,
-                "statut": statut,
-                "duree_ms": round((time.monotonic() - debut_etape) * 1000, 2),
-                "debut": horodatage,
-            }
-        )
+        etape: dict[str, Any] = {
+            "agent": nom,
+            "ecrit": ecrit,
+            "statut": statut,
+            "duree_ms": round((time.monotonic() - debut_etape) * 1000, 2),
+            "debut": horodatage,
+        }
+        if cause:
+            etape["cause"] = cause
+        if appels_externes:
+            etape["appels_externes"] = appels_externes
+        self.memoire.ajouter_trace(etape)
         if arret:
             self.memoire.poser_arret(arret)
         return arret is None

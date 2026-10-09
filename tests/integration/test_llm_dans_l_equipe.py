@@ -17,6 +17,23 @@ SCENARIOS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def partenaire_factice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ces tests portent sur le LLM, pas sur le partenaire : avis fixe, sans réseau ni registre."""
+
+    def avis(vue: dict[str, Any], **_: Any) -> dict[str, Any]:
+        return {
+            "reference_dossier": vue["reference"],
+            "score": 0.08,
+            "niveau": "faible",
+            "indicateurs": [],
+            "evaluation_id": "EVA-TEST",
+            "version_modele": "test",
+        }
+
+    monkeypatch.setattr("kaldera.a2a.interroger", avis)
+
+
 def demande(scenario: str, **sinistre: Any) -> dict[str, Any]:
     d = deepcopy(SCENARIOS[scenario]["demandes"][0])
     d["sinistre"].update(sinistre)
@@ -36,14 +53,26 @@ def test_description_incoherente_sur_une_escalade_apparait_dans_le_motif() -> No
     )
 
 
-def test_meme_description_sur_une_decision_ne_change_ni_issue_ni_motif() -> None:
+def test_description_incoherente_sur_un_dossier_acceptable_l_escalade() -> None:
     normal = kaldera.traiter_demande(demande("NOM-01"))
-    incoherent = kaldera.traiter_demande(
+    assert normal["decision"] == "acceptee"
+    fiche = kaldera.traiter_demande(
         demande("NOM-01", description="Cambriolage : ordinateur dérobé.")
     )
-    assert incoherent["decision"] == normal["decision"] == "acceptee"
-    assert incoherent["montant_rembourse"] == normal["montant_rembourse"]
-    assert incoherent["motif"] == normal["motif"] and "vigilance" not in incoherent["motif"]
+    assert (fiche["issue"], fiche["file"]) == ("escalade", "gestionnaire")
+    assert "description" in fiche["motif"].lower() and "vol" in fiche["motif"]
+
+
+def test_description_invraisemblable_une_mouche_est_relevee_et_escaladee() -> None:
+    fiche = kaldera.traiter_demande(
+        demande(
+            "NOM-01",
+            type="bris_de_glace",
+            description="C'est une mouche qui s'est cogné dans la vitre.",
+        )
+    )
+    assert (fiche["issue"], fiche["file"]) == ("escalade", "gestionnaire")
+    assert "invraisemblable" in fiche["motif"].lower()
 
 
 def test_llm_en_panne_n_arrete_pas_l_equipe_et_ne_change_pas_l_issue() -> None:

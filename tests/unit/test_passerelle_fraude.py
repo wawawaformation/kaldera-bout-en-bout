@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from kaldera import a2a
 from kaldera.passerelle_fraude import evaluer
 
 
@@ -59,3 +60,59 @@ def test_un_indicateur_suffit_et_sans_partenaire_l_avis_est_indisponible() -> No
     assert section["requis"] is True
     assert section["statut"] == "indisponible"
     assert section["avis"] is None
+
+
+# ------------------------------------------------------------------ appel du partenaire
+
+
+def avis(niveau: str = "faible", score: float = 0.08) -> dict[str, Any]:
+    return {
+        "reference_dossier": "KAL-26-0042",
+        "score": score,
+        "niveau": niveau,
+        "indicateurs": [],
+        "evaluation_id": "EVA-1",
+        "version_modele": "af-2.3.1",
+    }
+
+
+def test_avis_requis_et_obtenu_est_publie() -> None:
+    appels: list[dict[str, Any]] = []
+
+    def interroger(v: dict[str, Any]) -> dict[str, Any]:
+        appels.append(v)
+        return avis()
+
+    section = evaluer(vue(montant_declare=6000.0, estimation={"justifie": 6000.0}), interroger)
+    assert section["statut"] == "obtenu"
+    assert section["avis"]["niveau"] == "faible"
+    assert section["appel_envoye"] is True
+    assert len(appels) == 1
+
+
+def test_avis_non_requis_aucun_appel() -> None:
+    def interroger(v: dict[str, Any]) -> dict[str, Any]:
+        raise AssertionError("appel inutile")
+
+    section = evaluer(vue(), interroger)
+    assert section["statut"] == "non_requis"
+    assert section["appel_envoye"] is False
+
+
+def test_partenaire_indisponible_donne_statut_indisponible_avec_cause() -> None:
+    def interroger(v: dict[str, Any]) -> dict[str, Any]:
+        raise a2a.PartenaireIndisponible("delai")
+
+    section = evaluer(vue(montant_declare=6000.0, estimation={"justifie": 6000.0}), interroger)
+    assert section["statut"] == "indisponible"
+    assert section["avis"] is None
+    assert section["cause"] == "delai"
+    assert section["appel_envoye"] is True
+
+
+def test_defaut_kaldera_remonte_sans_etre_maquille_en_panne() -> None:
+    def interroger(v: dict[str, Any]) -> dict[str, Any]:
+        raise a2a.ErreurKaldera("http_401", appel_envoye=True)
+
+    with pytest.raises(a2a.ErreurKaldera):
+        evaluer(vue(montant_declare=6000.0, estimation={"justifie": 6000.0}), interroger)

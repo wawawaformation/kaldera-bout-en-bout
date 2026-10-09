@@ -21,3 +21,11 @@ def test_appels_echecs_et_latence_moyenne_par_agent() -> None:
 
 def test_lot_vide() -> None:
     assert calculer([]) == {}
+
+
+def test_indisponible_compte_comme_echec_et_appels_externes_sont_additionnes() -> None:
+    envoyee = {**etape("passerelle_fraude", "indisponible", 5.0), "appels_externes": 1}
+    fiches = [{"trace": [envoyee]}, {"trace": [etape("passerelle_fraude", "ok", 3.0)]}]
+    m = calculer(fiches)["passerelle_fraude"]
+    assert m["echecs"] == 1
+    assert m["appels_externes"] == 1

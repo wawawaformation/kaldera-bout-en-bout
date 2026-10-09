@@ -19,10 +19,10 @@ def traiter_demande(
 ) -> dict[str, Any]:
     """Traite une demande et retourne sa fiche de décision.
 
-    `partenaire_url` n'est pas encore utilisé : la liaison A2A relève du chantier 2.
+    `partenaire_url` : service anti-fraude (sinon `PARTENAIRE_URL`) ; jeton dans `PARTENAIRE_JETON`.
     `llm` : modèle du motif et de l'analyse de description ; simulé par défaut (addendum n°1).
     """
-    return assembler(traiter(demande, creer_equipe(llm or llm_depuis_env())))
+    return assembler(traiter(demande, creer_equipe(llm or llm_depuis_env(), partenaire_url)))
 
 
 def traiter_lot(
