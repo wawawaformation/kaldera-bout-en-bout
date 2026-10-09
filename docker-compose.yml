@@ -10,3 +10,36 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Serveur A2A à nous : évaluation par LLM, repli sur les règles (KALDERA_A2A_LLM=azure|ollama)
+  a2a:
+    build: ./a2a_server
+    environment:
+      PARTENAIRE_JETON: ${PARTENAIRE_JETON:-jeton-de-demo}
+      KALDERA_A2A_LLM: ${KALDERA_A2A_LLM:-azure}
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8101:8100"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/_sim/etat')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kaldera:
+    build: .
+    depends_on:
+      a2a:
+        condition: service_healthy
+    environment:
+      PARTENAIRE_URL: http://a2a:8100
+      PARTENAIRE_JETON: ${PARTENAIRE_JETON:-jeton-de-demo}
+    env_file:
+      - path: .env # clés LLM (KALDERA_LLM, AZURE_*, …), facultatif
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./donnees:/app/donnees

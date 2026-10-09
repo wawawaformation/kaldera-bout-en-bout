@@ -13,6 +13,7 @@ from .stockage import Stockage, dossier_par_defaut
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default="127.0.0.1", help="0.0.0.0 dans un conteneur")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--amorcer", type=Path, help="remplit assurés et contrats depuis un JSONL de scénarios"
@@ -22,7 +23,7 @@ def main() -> None:
         print(
             f"{Stockage(dossier_par_defaut()).amorcer(args.amorcer)} demande(s) lue(s) pour l'amorçage"
         )
-    uvicorn.run(creer_app(), host="127.0.0.1", port=args.port)
+    uvicorn.run(creer_app(), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
