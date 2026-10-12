@@ -175,10 +175,10 @@ def test_lecteur_depuis_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KALDERA_LECTEUR", "autre")
     with pytest.raises(RuntimeError, match="KALDERA_LECTEUR"):
         lecteur_depuis_env()
-    monkeypatch.setenv("KALDERA_LECTEUR", "ollama")
-    for v in ("OLLAMA_ENDPOINT", "OLLAMA_API_KEY", "OLLAMA_MODEL"):
+    monkeypatch.setenv("KALDERA_LECTEUR", "azure")
+    for v in ("AZURE_AI_ENDPOINT", "AZURE_AI_API_KEY", "AZURE_MODEL_GPT"):
         monkeypatch.delenv(v, raising=False)
-    with pytest.raises(RuntimeError, match="OLLAMA_ENDPOINT"):
+    with pytest.raises(RuntimeError, match="AZURE_AI_ENDPOINT"):
         lecteur_depuis_env()
 
 

@@ -1,4 +1,4 @@
-"""Client OpenAI v1 (Azure, Ollama cloud) derrière `Llm` : HTTP simulé, aucun réseau, aucune clé réelle."""
+"""Client OpenAI v1 (Azure) derrière `Llm` : HTTP simulé, aucun réseau, aucune clé réelle."""
 
 from __future__ import annotations
 
@@ -117,44 +117,6 @@ def test_le_type_est_donne_au_modele_en_clair_pas_en_identifiant() -> None:
     vus: list[httpx.Request] = []
     client("RAS", vus=vus).point_de_vigilance("bris_de_glace", "Cambriolage")
     assert "bris de glace" in json.loads(vus[0].content)["messages"][-1]["content"]
-
-
-def test_ollama_utilise_l_en_tete_bearer_et_max_tokens() -> None:
-    vus: list[httpx.Request] = []
-
-    def gerer(requete: httpx.Request) -> httpx.Response:
-        vus.append(requete)
-        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
-
-    llm = LlmOpenAI(
-        "https://ollama.exemple/v1",
-        "cle-ollama",
-        "glm",
-        auth="bearer",
-        transport=httpx.MockTransport(gerer),
-    )
-    llm.rediger_motif({"motif": "m"})
-    assert (
-        vus[0].headers["authorization"] == "Bearer cle-ollama" and "api-key" not in vus[0].headers
-    )
-    corps = json.loads(vus[0].content)
-    assert corps["max_tokens"] == 500 and "max_completion_tokens" not in corps
-
-
-def test_depuis_env_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KALDERA_LLM", "ollama")
-    monkeypatch.setenv("OLLAMA_ENDPOINT", "https://ollama.exemple/v1")
-    monkeypatch.setenv("OLLAMA_API_KEY", "k")
-    monkeypatch.setenv("OLLAMA_MODEL", "glm-5.3-flash:cloud")
-    assert isinstance(llm_depuis_env(), LlmOpenAI)
-
-
-def test_depuis_env_ollama_sans_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KALDERA_LLM", "ollama")
-    for v in ("OLLAMA_ENDPOINT", "OLLAMA_API_KEY", "OLLAMA_MODEL"):
-        monkeypatch.delenv(v, raising=False)
-    with pytest.raises(RuntimeError, match="OLLAMA_ENDPOINT"):
-        llm_depuis_env()
 
 
 def test_les_espaces_en_fin_de_valeur_sont_ignores(monkeypatch: pytest.MonkeyPatch) -> None:

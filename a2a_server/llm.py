@@ -1,6 +1,6 @@
-"""Client LLM minimal (API OpenAI v1 : Azure ou Ollama cloud), `httpx` seul, aucune relance.
+"""Client LLM minimal (API OpenAI v1 d'Azure), `httpx` seul, aucune relance.
 
-Choisi par `KALDERA_A2A_LLM=azure|ollama` ; absent : pas de LLM, règles seules. Le délai court
+Choisi par `KALDERA_A2A_LLM=azure` ; absent : pas de LLM, règles seules. Le délai court
 laisse de la marge au repli sous les 2 s garanties par le contrat.
 """
 
@@ -22,11 +22,10 @@ def _variables(*noms: str) -> list[str]:
 
 
 class ClientLlm:
-    def __init__(self, endpoint: str, cle: str, modele: str, *, bearer: bool) -> None:
+    def __init__(self, endpoint: str, cle: str, modele: str) -> None:
         self._url = f"{endpoint.rstrip('/')}/chat/completions"
         self._modele = modele
-        self._entete = {"Authorization": f"Bearer {cle}"} if bearer else {"api-key": cle}
-        self._param_tokens = "max_tokens" if bearer else "max_completion_tokens"
+        self._entete = {"api-key": cle}
         self._client = httpx.Client(timeout=DELAI_LLM_S)
 
     def completer(self, consigne: str, entree: str) -> str:
@@ -36,7 +35,7 @@ class ClientLlm:
                 {"role": "system", "content": consigne},
                 {"role": "user", "content": entree},
             ],
-            self._param_tokens: 300,
+            "max_completion_tokens": 300,
         }
         reponse = self._client.post(self._url, json=corps, headers=self._entete)
         reponse.raise_for_status()
@@ -49,8 +48,5 @@ def depuis_env() -> ClientLlm | None:
         endpoint, cle, modele = _variables(
             "AZURE_AI_ENDPOINT", "AZURE_AI_API_KEY", "AZURE_MODEL_GPT_MINI"
         )
-        return ClientLlm(endpoint, cle, modele, bearer=False)
-    if choix == "ollama":
-        endpoint, cle, modele = _variables("OLLAMA_ENDPOINT", "OLLAMA_API_KEY", "OLLAMA_MODEL")
-        return ClientLlm(endpoint, cle, modele, bearer=True)
+        return ClientLlm(endpoint, cle, modele)
     return None

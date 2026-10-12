@@ -1,4 +1,4 @@
-"""Client de l'API OpenAI v1 (Azure, Ollama cloud) derrière l'interface `Llm` : `httpx` seul, aucune relance.
+"""Client de l'API OpenAI v1 (Azure) derrière l'interface `Llm` : `httpx` seul, aucune relance.
 
 Aucune clé n'est journalisée ni placée dans un message d'erreur. Les délais sont imposés par
 l'appelant (`executer_avec_delai`) ; `timeout` ne sert qu'à ne pas laisser un fil abandonné vivre.
@@ -50,16 +50,13 @@ class LlmOpenAI:
         cle: str,
         modele: str,
         *,
-        auth: str = "api-key",
         timeout_s: float = 5.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._url = f"{endpoint.rstrip('/')}/chat/completions"
         self._cle = cle
         self._modele = modele
-        # Azure : en-tête « api-key » et max_completion_tokens ; Ollama : « Bearer » et max_tokens
-        self._entete = {"Authorization": f"Bearer {cle}"} if auth == "bearer" else {"api-key": cle}
-        self._param_tokens = "max_tokens" if auth == "bearer" else "max_completion_tokens"
+        self._entete = {"api-key": cle}  # Azure : en-tête « api-key »
         self._client = httpx.Client(timeout=timeout_s, transport=transport)
 
     def completer(self, consigne: str, entree: str, image: str | None = None) -> str:
@@ -76,7 +73,7 @@ class LlmOpenAI:
                 {"role": "system", "content": consigne},
                 {"role": "user", "content": utilisateur},
             ],
-            self._param_tokens: 500,
+            "max_completion_tokens": 500,
         }
         try:
             reponse = self._client.post(self._url, json=corps, headers=self._entete)
@@ -120,10 +117,3 @@ def depuis_env_azure(modele_env: str = "AZURE_MODEL_GPT_MINI", timeout_s: float 
         "AZURE_AI_ENDPOINT", "AZURE_AI_API_KEY", modele_env, usage="azure"
     )
     return LlmOpenAI(endpoint, cle, modele, timeout_s=timeout_s)
-
-
-def depuis_env_ollama(timeout_s: float = 5.0) -> LlmOpenAI:
-    endpoint, cle, modele = _variables(
-        "OLLAMA_ENDPOINT", "OLLAMA_API_KEY", "OLLAMA_MODEL", usage="ollama"
-    )
-    return LlmOpenAI(endpoint, cle, modele, auth="bearer", timeout_s=timeout_s)

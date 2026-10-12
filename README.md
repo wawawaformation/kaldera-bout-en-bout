@@ -14,7 +14,7 @@ agent-à-agent (A2A).
   `passerelle_fraude`, `decision` ; un coordinateur à parcours fixe et bornes (`bornes()`).
 - Client A2A du partenaire anti-fraude (JSON-RPC 2.0) : requête en liste blanche, réponse validée
   en 6 niveaux, un seul appel par dossier, aucune relance, mode dégradé si le partenaire est indisponible.
-- LLM derrière une interface (`Llm`, simulée par défaut ; Azure ou Ollama avec `KALDERA_LLM`).
+- LLM derrière une interface (`Llm`, simulée par défaut ; Azure avec `KALDERA_LLM=azure`).
 - Interface web de démonstration (contrats et pièces lus par un modèle, lettre au client).
 - Serveur A2A à nous (`a2a_server/`) évalué par un LLM, avec repli sur des règles.
 - Service partenaire simulé fourni, pilotable en direct (normal, lent, invalide, panne).
@@ -44,8 +44,8 @@ make test                 # tous les tests (l'acceptance lance son propre parten
 | `a2a` | serveur A2A à nous : LLM avec repli sur les règles (`a2a_server/`) | 8101 |
 | `kaldera` | moteur et interface web, appelle le service `a2a` | 8000 |
 
-Variables utiles (`.env`) : `PARTENAIRE_JETON`, `KALDERA_A2A_LLM=azure|ollama` (serveur `a2a`,
-`azure` par défaut dans le compose), `KALDERA_LLM=azure|ollama|simule` (moteur), clés `AZURE_*` / `OLLAMA_*`.
+Variables utiles (`.env`) : `PARTENAIRE_JETON`, `KALDERA_A2A_LLM=azure` (serveur `a2a`,
+`azure` par défaut dans le compose), `KALDERA_LLM=azure|simule` (moteur), clés `AZURE_*`.
 
 Sans Docker : `make partenaire` (partenaire fourni) et
 `uv run python -m kaldera.interface` (interface sur :8000).

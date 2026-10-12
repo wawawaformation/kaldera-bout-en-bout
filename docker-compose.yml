@@ -11,7 +11,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # Serveur A2A à nous : évaluation par LLM, repli sur les règles (KALDERA_A2A_LLM=azure|ollama)
+  # Serveur A2A à nous : évaluation par LLM, repli sur les règles (KALDERA_A2A_LLM=azure)
   a2a:
     build: ./a2a_server
     environment:

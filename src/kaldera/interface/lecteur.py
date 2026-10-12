@@ -173,14 +173,12 @@ class LecteurLlm:
 
 
 def lecteur_depuis_env() -> Lecteur:
-    """Simulé par défaut ; `KALDERA_LECTEUR=ollama|azure` branche un modèle à vision (délai large)."""
+    """Simulé par défaut ; `KALDERA_LECTEUR=azure` branche un modèle à vision (délai large)."""
     choix = os.environ.get("KALDERA_LECTEUR", "simule")
     if choix == "simule":
         return LecteurSimule()
-    if choix not in ("ollama", "azure"):
-        raise RuntimeError(f"KALDERA_LECTEUR={choix!r} inconnu (valeurs : simule, ollama, azure)")
+    if choix != "azure":
+        raise RuntimeError(f"KALDERA_LECTEUR={choix!r} inconnu (valeurs : simule, azure)")
     from .. import llm_openai
 
-    if choix == "ollama":
-        return LecteurLlm(llm_openai.depuis_env_ollama(timeout_s=30.0))
     return LecteurLlm(llm_openai.depuis_env_azure("AZURE_MODEL_GPT", timeout_s=30.0))
