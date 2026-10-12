@@ -11,7 +11,7 @@ lorsque le service anti-fraude du partenaire est indisponible.
 
 Il fait référence pour le comportement attendu de la plateforme. Le contrat
 d'échange avec le partenaire anti-fraude est décrit séparément
-(`external_agent/contrat.md`).
+(`a2a_server/contrat.md`).
 
 ## 2. Parcours d'une demande
 

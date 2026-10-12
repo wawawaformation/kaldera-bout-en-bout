@@ -17,7 +17,7 @@ agent-à-agent (A2A).
 - LLM derrière une interface (`Llm`, simulée par défaut ; Azure avec `KALDERA_LLM=azure`).
 - Interface web de démonstration (contrats et pièces lus par un modèle, lettre au client).
 - Serveur A2A à nous (`a2a_server/`) évalué par un LLM, avec repli sur des règles.
-- Service partenaire simulé fourni, pilotable en direct (normal, lent, invalide, panne).
+- Serveur A2A (partenaire simulé), pilotable en direct (normal, lent, invalide, panne).
 - Jeu de scénarios de recette et suite d'acceptance.
 
 ## Stack
@@ -27,7 +27,7 @@ agent-à-agent (A2A).
 - httpx 0.27+ (client A2A)
 - pydantic 2.x
 - pytest 8.x
-- Docker Compose (services `partenaire`, `a2a`, `kaldera`)
+- Docker Compose (services `a2a`, `kaldera`)
 
 ## Setup
 
@@ -35,19 +35,18 @@ agent-à-agent (A2A).
 make install              # uv sync — installe les dépendances
 cp .env.example .env      # puis renseigner les valeurs
 make up                   # docker compose up -d --build — 3 services (voir ci-dessous)
-make test                 # tous les tests (l'acceptance lance son propre partenaire simulé)
+make test                 # tous les tests (l'acceptance lance son propre serveur A2A, sans LLM)
 ```
 
 | Service | Rôle | Port hôte |
 |---|---|---|
-| `partenaire` | service anti-fraude fourni (règles fixes, `external_agent/`) | 8100 |
-| `a2a` | serveur A2A à nous : LLM avec repli sur les règles (`a2a_server/`) | 8101 |
+| `a2a` | serveur A2A à nous : LLM avec repli sur les règles (`a2a_server/`) | 8100 |
 | `kaldera` | moteur et interface web, appelle le service `a2a` | 8000 |
 
 Variables utiles (`.env`) : `PARTENAIRE_JETON`, `KALDERA_A2A_LLM=azure` (serveur `a2a`,
 `azure` par défaut dans le compose), `KALDERA_LLM=azure|simule` (moteur), clés `AZURE_*`.
 
-Sans Docker : `make partenaire` (partenaire fourni) et
+Sans Docker : `make partenaire` (serveur A2A, règles seules) et
 `uv run python -m kaldera.interface` (interface sur :8000).
 
 ## Utilisation
@@ -66,10 +65,10 @@ Les cibles `make` chargent `.env`. Hors `make` : `set -a; . ./.env; set +a`.
 - `src/kaldera/` — agents, coordinateur, règles, client A2A (`a2a.py`), LLM
 - `src/kaldera/interface/` — interface web de démonstration
 - `a2a_server/` — serveur A2A à nous (LLM + repli sur les règles) et son `Dockerfile`
-- `Dockerfile`, `docker-compose.yml` — conteneurs `kaldera`, `a2a`, `partenaire`
+- `Dockerfile`, `docker-compose.yml` — conteneurs `kaldera`, `a2a`
 - `docs/specs_metier.md` — spécifications fonctionnelles
 - `docs/interface.md` — contrat d'intégration (points d'entrée, fiche de décision, trace, métriques)
-- `external_agent/` — service anti-fraude partenaire fourni (lecture seule) et son contrat d'échange (`contrat.md`)
+- `a2a_server/` — serveur A2A anti-fraude et son contrat d'échange (`contrat.md`)
 - `scripts/partner_ctl.py` — pilotage du service partenaire simulé
 - `eval/scenarios.jsonl` — scénarios de recette
 - `tests/unit/`, `tests/integration/`, `tests/acceptance/` — tests (acceptance fournie)

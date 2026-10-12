@@ -13,7 +13,7 @@ down:
 	docker compose down
 
 partenaire:
-	uv run python -m external_agent --port 8100
+	uv run python -m a2a_server --port 8100
 
 scenarios:
 	uv run python -m kaldera.cli eval/scenarios.jsonl $(ARGS)

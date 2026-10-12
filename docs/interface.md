@@ -3,7 +3,7 @@
 Ce document fixe ce que la plateforme expose au reste du système d'information et
 à la suite d'acceptance (`tests/acceptance/`). Le comportement métier attendu est
 décrit dans `docs/specs_metier.md` ; le contrat du partenaire anti-fraude dans
-`external_agent/contrat.md`.
+`a2a_server/contrat.md`.
 
 ## Points d'entrée (paquet `kaldera`)
 

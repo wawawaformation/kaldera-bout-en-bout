@@ -76,7 +76,9 @@ def _port_libre() -> int:
 
 @pytest.fixture(scope="session")
 def partenaire() -> Partenaire:
-    from external_agent.app import app
+    # Règles seules : pas de LLM, pour des résultats déterministes
+    os.environ.pop("KALDERA_A2A_LLM", None)
+    from a2a_server.app import app
 
     port = _port_libre()
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", ws="none")
