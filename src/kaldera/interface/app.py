@@ -157,9 +157,16 @@ def creer_app(
         trouvee = stockage.demande(reference)
         if trouvee is None:
             raise HTTPException(404, "demande introuvable")
-        fiche = traiter_demande(trouvee)
+        # un rejeu est un nouveau dossier : le partenaire n'accepte qu'un appel par référence
+        with verrou:
+            nouvelle = {
+                **trouvee,
+                "reference": stockage.prochaine_reference(date.today().year % 100),
+            }
+            stockage.sauvegarder_demande(nouvelle)
+        fiche = traiter_demande(nouvelle)
         stockage.sauvegarder_fiche(fiche)
-        return {"demande": trouvee, "fiche": fiche}
+        return {"demande": nouvelle, "fiche": fiche}
 
     @app.post("/api/demandes/{reference}/courrier")
     def rediger(reference: str) -> dict[str, Any]:

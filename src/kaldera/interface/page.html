@@ -235,7 +235,7 @@ async function liste() {
   const z = $("#liste"); z.replaceChildren();
   if (!refs.length) z.append(creer("p", {}, "Aucune demande pour l'instant."));
   refs.forEach((ref) => {
-    const b = creer("button", { type: "button", className: "sec" }, `Rejouer ${ref}`);
+    const b = creer("button", { type: "button", className: "sec" }, `Rejouer ${ref} (nouveau dossier)`);
     b.onclick = async () => afficherFiche((await (await fetch(`/api/demandes/${encodeURIComponent(ref)}/rejouer`, { method: "POST" })).json()).fiche);
     z.append(b, " ");
   });

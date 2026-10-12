@@ -99,9 +99,13 @@ def test_des_depots_envoyes_quand_meme_ne_sont_pas_transmis_au_moteur(client: Te
 def test_rejeu_d_une_demande_sauvegardee(client: TestClient) -> None:
     r = client.post("/api/demandes", json=saisie()).json()
     premiere = r["fiche"]
-    rejeu = client.post(f"/api/demandes/{r['demande']['reference']}/rejouer").json()["fiche"]
-    assert {k: v for k, v in rejeu.items() if k != "trace"} == {
-        k: v for k, v in premiere.items() if k != "trace"
+    rejeu = client.post(f"/api/demandes/{r['demande']['reference']}/rejouer").json()
+    # un rejeu est un nouveau dossier (le partenaire n'accepte qu'un appel par référence)
+    assert rejeu["demande"]["reference"] != r["demande"]["reference"]
+    assert client.get(f"/api/demandes/{rejeu['demande']['reference']}").status_code == 200
+    ignores = {"trace", "reference"}
+    assert {k: v for k, v in rejeu["fiche"].items() if k not in ignores} == {
+        k: v for k, v in premiere.items() if k not in ignores
     }
 
 
@@ -456,7 +460,7 @@ def test_envoyer_sans_lettre_404_et_dossier_inconnu_404(client: TestClient) -> N
     assert client.get("/api/demandes/KAL-26-4242/courrier").status_code == 404
 
 
-def test_le_rejeu_met_a_jour_la_fiche_utilisee_pour_la_lettre(client: TestClient) -> None:
+def test_la_lettre_d_un_rejeu_utilise_la_fiche_du_nouveau_dossier(client: TestClient) -> None:
     ref = soumettre(client)
-    client.post(f"/api/demandes/{ref}/rejouer")
-    assert "1 700,00 €" in client.post(f"/api/demandes/{ref}/courrier").json()["texte"]
+    nouvelle = client.post(f"/api/demandes/{ref}/rejouer").json()["demande"]["reference"]
+    assert "1 700,00 €" in client.post(f"/api/demandes/{nouvelle}/courrier").json()["texte"]
