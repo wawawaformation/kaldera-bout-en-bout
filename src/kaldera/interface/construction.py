@@ -17,28 +17,29 @@ class ErreurSaisie(Exception):
         self.erreurs = erreurs
 
 
-def construire_demande(saisie: dict[str, Any], stockage: Stockage) -> dict[str, Any]:
+def construire_demande(
+    saisie: dict[str, Any], stockage: Stockage, reference: str
+) -> dict[str, Any]:
+    """La référence est donnée par l'appelant (générée par le système, jamais saisie)."""
     erreurs = valider_saisie(saisie)
     if erreurs:
         raise ErreurSaisie(erreurs)
-    assure = stockage.assure(saisie["id_client"])
-    contrat = stockage.contrat(saisie["numero_contrat"])
-    introuvables = [
-        f"{nom} {valeur!r} introuvable"
-        for nom, valeur, trouve in (
-            ("assuré", saisie["id_client"], assure),
-            ("contrat", saisie["numero_contrat"], contrat),
-        )
-        if trouve is None
-    ]
-    if introuvables or assure is None or contrat is None:
-        raise ErreurSaisie(introuvables)
+    numero = saisie["numero_contrat"]
+    contrat = stockage.contrat(numero)
+    if contrat is None:
+        raise ErreurSaisie([f"contrat {numero!r} introuvable"])
+    id_client = stockage.assure_du_contrat(numero)
+    if id_client is None:
+        raise ErreurSaisie([f"contrat {numero!r} : aucun assuré rattaché"])
+    assure = stockage.assure(id_client)
+    if assure is None:
+        raise ErreurSaisie([f"assuré {id_client!r} introuvable"])
     return {
-        "reference": saisie["reference"],
+        "reference": reference,
         "assure": deepcopy(assure["assure"]),
         "contrat": deepcopy(contrat),
         "sinistre": deepcopy(saisie["sinistre"]),
         "pieces": deepcopy(saisie.get("pieces") or []),
-        "historique": deepcopy(assure["historique"]),
-        "espace_assure": {"depots": deepcopy(saisie.get("depots") or [])},
+        "historique": {"sinistres_12_mois": saisie.get("sinistres_12_mois", 0)},
+        "espace_assure": {"depots": []},  # l'interface ne simule plus les dépôts ultérieurs
     }

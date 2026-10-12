@@ -20,8 +20,10 @@
   .grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
   .ligne { display:grid; grid-template-columns:1.2fr 2fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:4px; }
   .note { font-size:.85rem; color:var(--doux); margin:0 0 10px; }
+  input[readonly], select[disabled] { border-style:dashed; opacity:.8; cursor:not-allowed; }  /* lu sur le document : non modifiable */
   .erreurs { color:var(--ko); } .erreurs li { margin-left:16px; }
   .decision { font-size:1.2rem; font-weight:600; } .acceptee { color:var(--ok); } .refusee { color:var(--ko); } .escalade { color:var(--esc); }
+  pre#lettre { white-space:pre-wrap; font:inherit; background:var(--fond); border:1px solid var(--trait); border-radius:6px; padding:12px; }
   table { width:100%; border-collapse:collapse; font-size:.9rem; } th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--trait); }
   .badge { font-size:.8rem; border:1px solid var(--esc); color:var(--esc); border-radius:10px; padding:1px 8px; }
   @media (max-width:560px) { .ligne { grid-template-columns:1fr 1fr; } }
@@ -32,16 +34,43 @@
   <h1>Kaldera — démonstrateur</h1>
 
   <section>
+    <h2>Enregistrer un contrat <small>(PDF texte, PDF scanné ou image)</small></h2>
+    <form id="contrat">
+      <label>Fichier du contrat <input type="file" id="fichier_contrat" accept=".pdf,.png,.jpg,.jpeg"></label>
+      <p class="note" id="note_contrat">Le modèle lit le contrat et le souscripteur : ce qui est reconnu est verrouillé, le reste est à saisir. Statut et cotisations sont à saisir (ils ne figurent pas dans le contrat signé). L'assuré est rattaché au contrat : tu ne le ressaisis plus dans la demande.</p>
+      <div class="grille">
+        <label>Numéro <input name="numero" required></label>
+        <label>Formule <select name="formule"><option value="essentiel">essentiel</option><option value="confort">confort</option><option value="premium">premium</option></select></label>
+        <label>Date de souscription <input type="date" name="date_souscription" required></label>
+        <label>Statut <select name="statut"><option value="actif">actif</option><option value="suspendu">suspendu</option><option value="resilie">résilié</option></select></label>
+        <label>Cotisations <select name="cotisations_a_jour"><option value="true">à jour</option><option value="false">impayées</option></select></label>
+      </div>
+      <h2 style="margin-top:16px">Souscripteur (assuré)</h2>
+      <div class="grille">
+        <label>Nom <input name="nom" required></label>
+        <label>Prénom <input name="prenom" required></label>
+        <label>Adresse <input name="adresse" required></label>
+        <label>Code postal <input name="code_postal" inputmode="numeric" pattern="[0-9]{5}" required></label>
+        <label>E-mail <small>(facultatif)</small> <input type="email" name="email"></label>
+        <label>Téléphone <small>(facultatif)</small> <input name="telephone"></label>
+        <label>IBAN <small>(facultatif)</small> <input name="iban"></label>
+      </div>
+      <p><button type="submit">Enregistrer le contrat</button></p>
+    </form>
+    <ul id="erreurs_contrat" class="erreurs"></ul>
+    <p id="ok_contrat"></p>
+  </section>
+
+  <section>
     <h2>Nouvelle demande</h2>
     <form id="formulaire">
       <div class="grille">
-        <label>Référence <input name="reference" placeholder="KAL-26-0901" required></label>
-        <label>Assuré <select name="id_client"></select></label>
         <label>Contrat <select name="numero_contrat"></select></label>
+        <label>Sinistres déclarés sur les 12 derniers mois <input type="number" min="0" step="1" name="sinistres_12_mois" value="0"></label>
       </div>
       <h2 style="margin-top:16px">Sinistre</h2>
       <div class="grille">
-        <label>Type <select name="type">
+        <label>Type <select name="type_sinistre">
           <option value="degat_des_eaux">dégât des eaux</option><option value="incendie">incendie</option>
           <option value="bris_de_glace">bris de glace</option><option value="vol">vol</option></select></label>
         <label>Survenance <input type="date" name="date_survenance" required></label>
@@ -52,9 +81,6 @@
       <h2 style="margin-top:16px">Pièces jointes</h2>
       <div id="pieces"></div>
       <button type="button" class="sec" data-ajout="pieces">+ pièce</button>
-      <h2 style="margin-top:16px">Dépôts ultérieurs de l'assuré <small>(saisis d'avance, dans l'ordre)</small></h2>
-      <div id="depots"></div>
-      <button type="button" class="sec" data-ajout="depots">+ dépôt</button>
       <p><button type="submit">Traiter la demande</button></p>
     </form>
     <ul id="erreurs" class="erreurs"></ul>
@@ -63,6 +89,13 @@
   <section id="resultat" hidden>
     <h2>Fiche de décision</h2>
     <div id="fiche"></div>
+  </section>
+
+  <section id="courrier" hidden>
+    <h2>Lettre au client <span class="badge" id="origine_lettre"></span></h2>
+    <pre id="lettre"></pre>
+    <p><button type="button" id="envoyer">Envoyer la lettre</button> <span id="etat_envoi" class="note"></span></p>
+    <ul id="erreurs_courrier" class="erreurs"></ul>
   </section>
 
   <section>
@@ -85,42 +118,43 @@ function creer(nom, attrs = {}, texte = "") {
 function ajouterLigne(zone, piece = {}) {
   const conteneur = creer("div");
   const l = creer("div", { className: "ligne" });
-  const note = creer("p", { className: "note" });
+  const note = creer("p", { className: "note" }, "Dépose le fichier de la pièce : le serveur le relit lui-même.");
   const type = creer("select", { name: "type" });
   TYPES.forEach((t) => type.append(creer("option", { value: t, selected: t === piece.type }, t)));
   const fichier = creer("input", { type: "file", accept: ".png,.jpg,.jpeg,.pdf,.txt" });
-  const lisible = creer("select", { name: "lisible" });
-  [["true", "lisible"], ["false", "illisible"]].forEach(([v, t]) => lisible.append(creer("option", { value: v }, t)));
-  const montant = creer("input", { type: "number", step: "0.01", name: "montant", placeholder: "montant (factures)" });
+  // lisibilité : affichage seul (jamais envoyée) ; montant : à saisir seulement si le serveur ne sait pas le lire
+  const lisible = creer("select", { name: "lisible", disabled: true });
+  [["true", "lisible"], ["false", "illisible"], ["", "à analyser"]].forEach(([v, t]) => lisible.append(creer("option", { value: v }, t)));
+  lisible.value = "";
+  const montant = creer("input", { type: "number", step: "0.01", name: "montant", placeholder: "montant (factures)", readOnly: true });
   const retirer = creer("button", { type: "button", className: "sec" }, "×");
   retirer.onclick = () => conteneur.remove();
-  // proposition du modèle (CR.5.3) : gardée pour détecter une correction humaine (CR.5.2, N1)
-  conteneur.proposition = null;
+  conteneur.fichier = null;  // {nom, contenu} : ce que le serveur relira à la soumission
   fichier.onchange = async () => {
     const f = fichier.files[0];
-    if (!f) { conteneur.proposition = null; note.textContent = ""; return; }
+    conteneur.fichier = null; lisible.value = ""; montant.value = ""; montant.readOnly = true;
+    if (!f) { note.textContent = "Dépose le fichier de la pièce : le serveur le relit lui-même."; return; }
     const octets = new Uint8Array(await f.arrayBuffer());
     let binaire = ""; octets.forEach((o) => (binaire += String.fromCharCode(o)));
+    conteneur.fichier = { nom: f.name, contenu: btoa(binaire) };
+    note.textContent = "Analyse en cours…";
+    // aperçu seulement : à la soumission, le serveur relit le fichier et ignore cet affichage
     const r = await fetch("/api/pieces/analyser", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: type.value, nom: f.name, contenu: btoa(binaire) }) });
+      body: JSON.stringify({ type: type.value, nom: f.name, contenu: conteneur.fichier.contenu }) });
     const p = await r.json();
-    if (!r.ok) { note.textContent = (p.erreurs || ["analyse impossible"]).join(", "); return; }
-    conteneur.proposition = p;
+    if (!r.ok) { montant.readOnly = type.value !== "facture"; note.textContent = (p.erreurs || ["analyse impossible"]).join(", "); return; }
     lisible.value = String(p.lisible);
     montant.value = p.montant ?? "";
-    note.textContent = `Proposé (garde-fou ${p.verdict.garde_fou}) : ${p.verdict.raison}` +
-      (type.value === "facture" && p.montant == null && p.lisible ? " — montant non trouvé, à saisir." : "") + " À confirmer ou corriger.";
+    montant.readOnly = !(type.value === "facture" && p.lisible && p.montant == null);  // à saisir seulement si non lu
+    note.textContent = `Aperçu (garde-fou ${p.verdict.garde_fou}) : ${p.verdict.raison}` +
+      (type.value === "facture" && p.lisible && p.montant == null ? " — montant non trouvé, à saisir." : "");
   };
   l.append(type, fichier, lisible, montant, retirer);
   conteneur.append(l, note);
+  // seul le fichier part vers le serveur (et un montant saisi quand le total n'est pas lisible)
   conteneur.lire = () => {
-    const piece = { type: type.value, lisible: lisible.value === "true" };
-    if (montant.value !== "") piece.montant = Number(montant.value);
-    const p = conteneur.proposition;
-    if (p) {
-      const corrige = piece.lisible !== p.lisible || (type.value === "facture" && p.lisible && piece.montant !== p.montant);
-      piece.verdict = corrige ? { garde_fou: "humain", raison: "corrigé par le démonstrateur (proposé : " + p.verdict.raison + ")" } : p.verdict;
-    }
+    const piece = { type: type.value, fichier: conteneur.fichier };
+    if (!montant.readOnly && montant.value !== "") piece.montant = Number(montant.value);
     return piece;
   };
   $("#" + zone).append(conteneur);
@@ -134,18 +168,19 @@ function lireSaisie() {
   const f = $("#formulaire");
   const v = (n) => f.elements[n].value;
   return {
-    reference: v("reference"), id_client: v("id_client"), numero_contrat: v("numero_contrat"),
+    numero_contrat: v("numero_contrat"), sinistres_12_mois: Number(v("sinistres_12_mois") || 0),
     sinistre: {
-      type: v("type"), date_survenance: v("date_survenance"), date_declaration: v("date_declaration"),
+      type: v("type_sinistre"), date_survenance: v("date_survenance"), date_declaration: v("date_declaration"),
       montant_declare: v("montant_declare") === "" ? null : Number(v("montant_declare")), description: v("description"),
     },
-    pieces: lireLignes("pieces"), depots: lireLignes("depots"),
+    pieces: lireLignes("pieces"),
   };
 }
 
 function afficherFiche(fiche) {
   const z = $("#fiche"); z.replaceChildren();
   const titre = fiche.issue === "decision" ? `${fiche.decision} — ${fiche.montant_rembourse} €` : `escalade → ${fiche.file}`;
+  z.append(creer("p", { className: "note" }, "Dossier " + fiche.reference));
   z.append(creer("div", { className: "decision " + (fiche.decision || "escalade") }, titre));
   z.append(creer("p", {}, fiche.motif));
   if (fiche.mode_degrade) z.append(creer("span", { className: "badge" }, "mode dégradé"));
@@ -162,7 +197,38 @@ function afficherFiche(fiche) {
   z.append(t);
   $("#resultat").hidden = false;
   $("#resultat").scrollIntoView({ behavior: "smooth" });
+  chargerCourrier(fiche.reference);
 }
+
+// --- Bout de chaîne : la lettre au client et le bouton « Envoyer » (aucun e-mail pour l'instant) ---
+let referenceCourrier = null;
+
+function afficherCourrier(c) {
+  $("#lettre").textContent = c.texte;
+  $("#origine_lettre").textContent = c.origine === "modele" ? "rédigée par le modèle" : "lettre standard";
+  const envoyee = Boolean(c.envoye_le);
+  $("#envoyer").disabled = envoyee;
+  $("#etat_envoi").textContent = envoyee
+    ? `Envoyée le ${new Date(c.envoye_le).toLocaleString("fr-FR")} — ${c.canal}.`
+    : `Non envoyée (${c.canal}).`;
+  $("#courrier").hidden = false;
+}
+
+async function chargerCourrier(reference) {
+  referenceCourrier = reference;
+  $("#erreurs_courrier").replaceChildren();
+  $("#lettre").textContent = "Rédaction de la lettre…"; $("#courrier").hidden = false; $("#envoyer").disabled = true;
+  const r = await fetch(`/api/demandes/${encodeURIComponent(reference)}/courrier`, { method: "POST" });
+  if (!r.ok) { $("#lettre").textContent = ""; $("#erreurs_courrier").append(creer("li", {}, "Lettre impossible à rédiger.")); return; }
+  afficherCourrier(await r.json());
+}
+
+$("#envoyer").onclick = async () => {
+  $("#erreurs_courrier").replaceChildren();
+  const r = await fetch(`/api/demandes/${encodeURIComponent(referenceCourrier)}/courrier/envoyer`, { method: "POST" });
+  if (r.ok) { afficherCourrier(await r.json()); return; }
+  $("#erreurs_courrier").append(creer("li", {}, r.status === 409 ? "Cette lettre a déjà été envoyée." : "Envoi impossible."));
+};
 
 async function liste() {
   const refs = await (await fetch("/api/demandes")).json();
@@ -185,14 +251,63 @@ $("#formulaire").onsubmit = async (ev) => {
   liste();
 };
 
+// --- Enregistrement d'un contrat (CR.6) : le modèle propose, le démonstrateur valide ---
+const CHAMPS_LUS = ["numero", "formule", "date_souscription", "nom", "prenom", "adresse", "code_postal"];
+const verrouiller = (champ, oui) => { if (champ.tagName === "SELECT") champ.disabled = oui; else champ.readOnly = oui; };
+let propositionContrat = null;
+let fichierContrat = null;
+
+async function lireFichier(f) {
+  const octets = new Uint8Array(await f.arrayBuffer());
+  let binaire = ""; octets.forEach((o) => (binaire += String.fromCharCode(o)));
+  return btoa(binaire);
+}
+
+$("#fichier_contrat").onchange = async () => {
+  const f = $("#fichier_contrat").files[0];
+  const note = $("#note_contrat"); propositionContrat = null; fichierContrat = null;
+  CHAMPS_LUS.forEach((c) => verrouiller($("#contrat").elements[c], false));
+  if (!f) return;
+  note.textContent = "Analyse en cours…";
+  fichierContrat = { nom: f.name, contenu: await lireFichier(f) };
+  const r = await fetch("/api/contrats/analyser", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fichierContrat) });
+  const p = await r.json();
+  if (!r.ok) { note.textContent = (p.erreurs || ["analyse impossible"]).join(", "); return; }
+  propositionContrat = p;
+  const form = $("#contrat").elements;
+  // un champ reconnu est rempli et verrouillé ; un champ non reconnu reste à saisir
+  CHAMPS_LUS.forEach((c) => { if (p[c]) { form[c].value = p[c]; verrouiller(form[c], true); } });
+  const manquants = CHAMPS_LUS.filter((c) => !p[c]);
+  note.textContent = `Lu sur le contrat : ${CHAMPS_LUS.length - manquants.length}/${CHAMPS_LUS.length} champs, non modifiables.` +
+    (manquants.length ? ` À saisir : ${manquants.join(", ")}.` : "") + " Reste à renseigner : statut, cotisations (et e-mail, téléphone, IBAN si besoin).";
+};
+
+$("#contrat").onsubmit = async (ev) => {
+  ev.preventDefault();
+  $("#erreurs_contrat").replaceChildren(); $("#ok_contrat").textContent = "";
+  const f = $("#contrat").elements;
+  const corps = { numero: f.numero.value, formule: f.formule.value, date_souscription: f.date_souscription.value,
+    statut: f.statut.value, cotisations_a_jour: f.cotisations_a_jour.value === "true",
+    assure: { nom: f.nom.value, prenom: f.prenom.value, adresse: f.adresse.value, code_postal: f.code_postal.value,
+      email: f.email.value, telephone: f.telephone.value, iban: f.iban.value },
+    fichier: fichierContrat };
+  const r = await fetch("/api/contrats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+  const reponse = await r.json();
+  if (r.status === 422) { reponse.erreurs.forEach((e) => $("#erreurs_contrat").append(creer("li", {}, e))); return; }
+  const o = reponse.origines;
+  const humains = Object.keys(o).filter((c) => o[c] === "humain");
+  $("#ok_contrat").textContent = `Contrat ${reponse.contrat.numero} enregistré pour ${reponse.assure.prenom} ${reponse.assure.nom} (${reponse.assure.id_client}). ` +
+    (humains.length ? `Saisis par toi (non reconnus) : ${humains.join(", ")}.` : "Tous les champs ont été lus sur le contrat.");
+  const sel = $("#formulaire").elements.numero_contrat;
+  if (![...sel.options].some((x) => x.value === reponse.contrat.numero)) sel.append(creer("option", { value: reponse.contrat.numero }, reponse.contrat.numero));
+  sel.value = reponse.contrat.numero;
+};
+
 document.querySelectorAll("[data-ajout]").forEach((b) => (b.onclick = () => ajouterLigne(b.dataset.ajout)));
 
 (async () => {
-  for (const [liste_, nom] of [["assures", "id_client"], ["contrats", "numero_contrat"]]) {
-    const ids = await (await fetch("/api/" + liste_)).json();
-    const sel = $("#formulaire").elements[nom];
-    ids.forEach((id) => sel.append(creer("option", { value: id }, id)));
-  }
+  const ids = await (await fetch("/api/contrats")).json();
+  ids.forEach((id) => $("#formulaire").elements.numero_contrat.append(creer("option", { value: id }, id)));
   ajouterLigne("pieces", { type: "facture" });
   liste();
 })();
