@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from . import regles
+from .coordinateur import BORNES
 from .delai import executer_avec_delai
 from .llm import Llm
 
@@ -141,12 +142,14 @@ def _reformuler(issue: dict[str, Any], llm: Llm, delai_s: float) -> str:
 
 
 def decider(
-    vue: dict[str, Any], llm: Llm | None = None, delai_llm_s: float = 2.0
+    vue: dict[str, Any], llm: Llm | None = None, delai_llm_s: float | None = None
 ) -> dict[str, Any]:
     """Conclut la demande ; en cas d'échec interne, écrit un X6 de secours (gabarit constant).
 
     Les règles fixent l'issue ; le LLM (A1) ne reformule que le motif, sauf pour X6.
     """
+    if delai_llm_s is None:
+        delai_llm_s = BORNES["delai_llm_decision_s"]  # source unique : config.yml
     try:
         if vue["arret"]:
             borne = vue["arret"]["borne"]

@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from .a2a import ErreurKaldera
 from .delai import executer_avec_delai
@@ -14,18 +17,31 @@ from .memoire import Memoire
 # Un agent reçoit une vue en lecture seule et rend {section: valeur} ; il n'écrit jamais lui-même.
 Agent = Callable[[dict[str, Any]], dict[str, Any]]
 
-# Valeurs déduites de la spec, du contrat et des scénarios, pas mesurées : donc provisoires (Q3.d).
-BORNES: dict[str, float] = {
-    "etapes_max": 9,  # addendum n°1 : +1 étape (analyse_description)
-    "duree_max_s": 10,
-    "delai_etape_s": 1,  # code déterministe : ne sert qu'à couper un agent bloqué
-    "delai_passerelle_s": 3,  # contrat A2A : abandon au plus tard à 3 s
-    "abandon_partenaire_s": 2.5,  # laisse 0,5 s à la passerelle pour publier « indisponible »
-    "delai_decision_s": 2.5,  # addendum n°1 révisé : le LLM du motif a 2 s, 0,5 s pour le repli
-    "delai_llm_decision_s": 2.0,
-    "delai_analyse_s": 2,  # addendum n°3 : 0,8 s faisait expirer le LLM réel (0,5 à 1,2 s)
-    "delai_llm_analyse_s": 1.7,  # sous le délai de l'étape : l'agent publie « indisponible » lui-même
+def _charger_bornes() -> dict[str, float]:
+    """Lit `config.yml` (à côté de ce module) et refuse un fichier incomplet ou hors plafond."""
+    brut = yaml.safe_load((Path(__file__).parent / "config.yml").read_text(encoding="utf-8"))
+    manquantes = CLES_BORNES - set(brut)
+    if manquantes:
+        raise ValueError(f"config.yml : borne(s) manquante(s) : {', '.join(sorted(manquantes))}")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in brut.values()):
+        raise ValueError("config.yml : toutes les bornes doivent être des nombres")
+    if brut["duree_max_s"] > 10:
+        raise ValueError("config.yml : duree_max_s doit rester <= 10 (interface.md)")
+    return {cle: brut[cle] for cle in CLES_BORNES}
+
+
+CLES_BORNES = {
+    "etapes_max",
+    "duree_max_s",
+    "delai_etape_s",
+    "delai_passerelle_s",
+    "abandon_partenaire_s",
+    "delai_decision_s",
+    "delai_llm_decision_s",
+    "delai_analyse_s",
+    "delai_llm_analyse_s",
 }
+BORNES: dict[str, float] = _charger_bornes()
 
 
 def bornes() -> dict[str, float]:

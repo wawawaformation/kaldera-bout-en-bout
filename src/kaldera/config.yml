@@ -1,0 +1,16 @@
+# Bornes de l'équipe : source unique, lue au démarrage par `coordinateur.BORNES` (et exposée par `bornes()`).
+# Toute modification est à consigner dans docs/journal_ajustements.md (invariant 8).
+# Valeurs déduites de la spec, du contrat et des scénarios, puis mesurées (journal) : donc révisables (Q3.d).
+
+etapes_max: 9              # addendum n°1 : +1 étape (analyse_description)
+duree_max_s: 10            # plafond imposé par interface.md (ne pas dépasser 10)
+
+delai_etape_s: 1           # code déterministe : ne sert qu'à couper un agent bloqué
+delai_passerelle_s: 3      # contrat A2A : abandon au plus tard à 3 s
+abandon_partenaire_s: 2.5  # laisse 0,5 s à la passerelle pour publier « indisponible »
+
+delai_decision_s: 2.5      # étape decision = LLM du motif + 0,5 s pour le repli
+delai_llm_decision_s: 2.0  # révisé le 2026-10-12 après mesure (1,5 s faisait basculer un appel sur 10)
+
+delai_analyse_s: 2         # addendum n°3 : 0,8 s faisait expirer le LLM réel (0,5 à 1,2 s)
+delai_llm_analyse_s: 1.7   # sous le délai de l'étape : l'agent publie « indisponible » lui-même

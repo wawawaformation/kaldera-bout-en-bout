@@ -292,7 +292,9 @@ def test_delais_par_etape() -> None:
     import kaldera.coordinateur as c
 
     assert (
-        c._delai("decision") == 2.5 and c._delai("pieces") == 1 and c._delai("passerelle_fraude") == 3
+        c._delai("decision") == 2.5
+        and c._delai("pieces") == 1
+        and c._delai("passerelle_fraude") == 3
     )
     assert (
         c._delai("analyse_description") == 2
@@ -315,3 +317,24 @@ def test_pire_cas_theorique_depasse_10_s_et_la_garde_de_duree_le_couvre() -> Non
         + b["delai_decision_s"]
     )
     assert pire == 11.5 and pire > b["duree_max_s"]
+
+
+def test_bornes_lues_depuis_config_yml() -> None:
+    import kaldera.coordinateur as c
+
+    assert set(c.bornes()) == c.CLES_BORNES and c.bornes()["duree_max_s"] <= 10
+
+
+def test_config_incomplete_ou_hors_plafond_est_refusee(monkeypatch, tmp_path) -> None:
+    import kaldera.coordinateur as c
+
+    def charger(texte: str) -> None:
+        (tmp_path / "config.yml").write_text(texte, encoding="utf-8")
+        monkeypatch.setattr(c, "__file__", str(tmp_path / "x.py"))
+        c._charger_bornes()
+
+    with pytest.raises(ValueError, match="manquante"):
+        charger("etapes_max: 9\n")
+    tout = "\n".join(f"{k}: 1" for k in c.CLES_BORNES - {"duree_max_s"})
+    with pytest.raises(ValueError, match="<= 10"):
+        charger(tout + "\nduree_max_s: 11\n")
