@@ -165,3 +165,31 @@ def test_les_espaces_en_fin_de_valeur_sont_ignores(monkeypatch: pytest.MonkeyPat
     llm = llm_depuis_env()
     assert isinstance(llm, LlmOpenAI) and llm._modele == "gpt-mini" and llm._cle == "k"  # noqa: SLF001
     assert llm._url == f"{ENDPOINT}/chat/completions"  # noqa: SLF001
+
+
+def test_completer_avec_image_envoie_un_contenu_multimodal() -> None:
+    vus: list[httpx.Request] = []
+    client("OUI", vus=vus).completer("consigne", "question", image="data:image/png;base64,AAA")
+    contenu = json.loads(vus[0].content)["messages"][-1]["content"]
+    assert contenu == [
+        {"type": "text", "text": "question"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
+    ]
+
+
+def test_la_consigne_de_vigilance_couvre_l_invraisemblance() -> None:
+    vus: list[httpx.Request] = []
+    client("RAS", vus=vus).point_de_vigilance("bris_de_glace", "C'est une mouche")
+    consigne = json.loads(vus[0].content)["messages"][0]["content"].lower()
+    assert "invraisemblable" in consigne and "ras" in consigne
+
+
+def test_rediger_courrier_envoie_la_lettre_standard_et_rend_le_texte() -> None:
+    vus: list[httpx.Request] = []
+    texte = client("Madame, bonne nouvelle.", vus=vus).rediger_courrier("Madame, acceptée.")
+    messages = json.loads(vus[0].content)["messages"]
+    assert texte == "Madame, bonne nouvelle." and messages[-1]["content"] == "Madame, acceptée."
+    consigne = messages[0]["content"].lower()
+    assert (
+        "fraude" in consigne and "jamais" in consigne
+    )  # interdiction explicite de mentionner la fraude

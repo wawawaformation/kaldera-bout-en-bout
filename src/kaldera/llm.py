@@ -21,6 +21,21 @@ class Llm(Protocol):
         """Retourne au plus une phrase sur la description, ou None (B1)."""
         ...
 
+    def rediger_courrier(self, lettre_standard: str) -> str:
+        """Reformule la lettre standard au client sans changer aucun fait (addendum n°3)."""
+        ...
+
+
+# causes dérisoires : un tel texte n'explique pas un sinistre de cette nature (simulé, mots-clés)
+MOTS_INVRAISEMBLABLES = (
+    "mouche",
+    "moucheron",
+    "moustique",
+    "insecte",
+    "araignée",
+    "guêpe",
+    "fourmi",
+)
 
 LIBELLES = {
     "degat_des_eaux": "dégât des eaux",
@@ -48,7 +63,14 @@ class LlmSimule:
     def rediger_motif(self, issue: dict[str, Any]) -> str:
         return str(issue["motif"])
 
+    def rediger_courrier(self, lettre_standard: str) -> str:
+        return lettre_standard
+
     def point_de_vigilance(self, type_sinistre: str, description: str) -> str | None:
+        if any(re.search(rf"\b{mot}", description.lower()) for mot in MOTS_INVRAISEMBLABLES):
+            return (
+                "Description invraisemblable : la cause décrite est dérisoire pour un tel sinistre."
+            )
         if type_sinistre not in MOTS_CLES or _evoque(description, type_sinistre):
             return None
         autres = [t for t in MOTS_CLES if t != type_sinistre and _evoque(description, t)]
@@ -60,7 +82,7 @@ class LlmSimule:
         )
 
 
-def llm_depuis_env() -> Llm:
+def llm_depuis_env(timeout_s: float = 5.0) -> Llm:
     """Simulé par défaut (tests, démo hors ligne) ; `KALDERA_LLM=azure|ollama` branche un vrai modèle."""
     choix = os.environ.get("KALDERA_LLM", "simule")
     if choix == "simule":
@@ -68,5 +90,9 @@ def llm_depuis_env() -> Llm:
     if choix in ("azure", "ollama"):
         from . import llm_openai
 
-        return llm_openai.depuis_env_azure() if choix == "azure" else llm_openai.depuis_env_ollama()
+        return (
+            llm_openai.depuis_env_azure(timeout_s=timeout_s)
+            if choix == "azure"
+            else llm_openai.depuis_env_ollama(timeout_s=timeout_s)
+        )
     raise RuntimeError(f"KALDERA_LLM={choix!r} inconnu (valeurs : simule, azure, ollama)")

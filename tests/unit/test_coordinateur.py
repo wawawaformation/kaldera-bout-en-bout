@@ -288,16 +288,30 @@ def test_boucle_sans_fin_avec_description_reste_dans_9_etapes() -> None:
     assert agents_appeles(fiche)[-1] == "decision"
 
 
-def test_delai_de_decision_de_2_s() -> None:
+def test_delais_par_etape() -> None:
     import kaldera.coordinateur as c
 
     assert (
         c._delai("decision") == 2 and c._delai("pieces") == 1 and c._delai("passerelle_fraude") == 3
     )
+    assert (
+        c._delai("analyse_description") == 2
+    )  # le LLM réel met 0,5 à 1,2 s : 0,8 s le faisait expirer
 
 
-def test_pire_cas_legitime_tient_en_10_s_sans_marge() -> None:
+def test_le_llm_de_l_analyse_est_abandonne_avant_la_fin_de_l_etape() -> None:
     b = bornes()
-    # fourche (1 s) + 3 tours de complément + estimation + passerelle + decision
-    pire = b["delai_etape_s"] * (1 + 3 + 1) + b["delai_passerelle_s"] + b["delai_decision_s"]
-    assert pire == b["duree_max_s"]
+    assert b["delai_llm_analyse_s"] < b["delai_analyse_s"]
+
+
+def test_pire_cas_theorique_depasse_10_s_et_la_garde_de_duree_le_couvre() -> None:
+    """Chaque étape au bout de son délai : fourche 2 s + 3 tours + estimation + passerelle + decision = 11 s.
+    En pratique les agents de code répondent en millisecondes ; la garde de durée tranche sinon (X6)."""
+    b = bornes()
+    pire = (
+        b["delai_analyse_s"]
+        + b["delai_etape_s"] * (3 + 1)
+        + b["delai_passerelle_s"]
+        + b["delai_decision_s"]
+    )
+    assert pire == 11 and pire > b["duree_max_s"]

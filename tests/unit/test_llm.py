@@ -63,3 +63,23 @@ def test_executer_avec_delai_coupe_au_dela() -> None:
     with pytest.raises(TimeoutError):
         executer_avec_delai(lambda: time.sleep(0.5), 0.05)
     assert time.perf_counter() - debut < 0.3
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "C'est une mouche qui s'est cogné dans la vitre.",
+        "Un moustique a tapé contre la fenêtre.",
+        "Une araignée a fissuré la baie.",
+    ],
+)
+def test_simule_description_invraisemblable_donne_un_point(description: str) -> None:
+    point = LlmSimule().point_de_vigilance("bris_de_glace", description)
+    assert point is not None and "invraisemblable" in point.lower()
+
+
+def test_simule_courrier_est_la_lettre_standard_inchangee() -> None:
+    assert (
+        LlmSimule().rediger_courrier("Madame, votre demande est acceptée.")
+        == "Madame, votre demande est acceptée."
+    )

@@ -187,19 +187,68 @@ def test_point_de_vigilance_ajoute_au_motif_d_une_escalade() -> None:
     assert r["file"] == "gestionnaire" and "Description évoquant un vol." in r["motif"]
 
 
-def test_point_de_vigilance_n_est_pas_ajoute_a_une_decision() -> None:
+def test_regle_4_bis_description_signalee_escalade_vers_un_gestionnaire() -> None:
+    """Addendum n°3 : un dossier qui serait accepté mais dont la description est signalée est escaladé."""
     r = decider(vue(analyse_description=VIGILANCE))["issue"]
-    assert r["decision"] == "acceptee" and "vol" not in r["motif"]
-    r = decider(vue(estime=0.0, analyse_description=VIGILANCE))["issue"]
-    assert r["decision"] == "refusee" and "vol" not in r["motif"]
+    assert (r["issue"], r["file"], r["decision"], r["montant_rembourse"]) == (
+        "escalade",
+        "gestionnaire",
+        None,
+        None,
+    )
+    assert "Description évoquant un vol." in r["motif"] and "description" in r["motif"].lower()
+    assert r["mode_degrade"] is False
 
 
-def test_le_point_de_vigilance_ne_change_jamais_l_issue() -> None:
-    sans = decider(vue(avis_fraude=avis("obtenu", "eleve")))["issue"]
-    avec = decider(vue(avis_fraude=avis("obtenu", "eleve"), analyse_description=VIGILANCE))["issue"]
-    assert {k: v for k, v in avec.items() if k != "motif"} == {
-        k: v for k, v in sans.items() if k != "motif"
-    }
+def test_regle_4_bis_ne_passe_pas_devant_un_refus() -> None:
+    non_eligible = vue(
+        eligibilite={"eligible": False, "non_remplies": ["E1"]}, analyse_description=VIGILANCE
+    )
+    assert decider(non_eligible)["issue"]["decision"] == "refusee"
+    assert decider(vue(estime=0.0, analyse_description=VIGILANCE))["issue"]["decision"] == "refusee"
+
+
+def test_regle_4_bis_ne_passe_pas_devant_pieces_manquantes() -> None:
+    r = decider(vue(pieces={"statut": "pieces_manquantes"}, analyse_description=VIGILANCE))["issue"]
+    assert (
+        "pièces manquantes" in r["motif"].lower() and "Description évoquant un vol." in r["motif"]
+    )
+
+
+def test_regle_4_bis_apres_l_avis_anti_fraude() -> None:
+    eleve = decider(vue(avis_fraude=avis("obtenu", "eleve"), analyse_description=VIGILANCE))[
+        "issue"
+    ]
+    assert eleve["file"] == "cellule_fraude"  # le risque de fraude passe avant la description
+    modere = decider(vue(avis_fraude=avis("obtenu", "modere"), analyse_description=VIGILANCE))[
+        "issue"
+    ]
+    assert modere["file"] == "gestionnaire" and "contrôle renforcé" in modere["motif"].lower()
+
+
+def test_regle_4_bis_en_mode_degrade_garde_le_drapeau() -> None:
+    r = decider(vue(estime=900.0, avis_fraude=avis("indisponible"), analyse_description=VIGILANCE))[
+        "issue"
+    ]
+    assert (r["issue"], r["file"], r["mode_degrade"]) == ("escalade", "gestionnaire", True)
+    gros = decider(
+        vue(estime=3000.0, avis_fraude=avis("indisponible"), analyse_description=VIGILANCE)
+    )["issue"]
+    assert gros["file"] == "cellule_fraude"  # X4 d'abord
+
+
+def test_regle_4_bis_avant_le_seuil_de_delegation() -> None:
+    r = decider(vue(estime=12_000.0, analyse_description=VIGILANCE))["issue"]
+    assert r["file"] == "gestionnaire" and "description" in r["motif"].lower()
+
+
+def test_analyse_indisponible_ou_sans_point_l_issue_et_le_motif_sont_inchanges() -> None:
+    for section in (
+        None,
+        {"statut": "indisponible", "point": None},
+        {"statut": "obtenu", "point": None},
+    ):
+        assert decider(vue(analyse_description=section))["issue"]["decision"] == "acceptee"
 
 
 def test_analyse_indisponible_ou_absente_motif_inchange() -> None:
