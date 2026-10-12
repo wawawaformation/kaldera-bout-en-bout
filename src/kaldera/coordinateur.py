@@ -21,8 +21,8 @@ BORNES: dict[str, float] = {
     "delai_etape_s": 1,  # code déterministe : ne sert qu'à couper un agent bloqué
     "delai_passerelle_s": 3,  # contrat A2A : abandon au plus tard à 3 s
     "abandon_partenaire_s": 2.5,  # laisse 0,5 s à la passerelle pour publier « indisponible »
-    "delai_decision_s": 2,  # addendum n°1 : le LLM du motif a 1,5 s, 0,5 s pour le repli
-    "delai_llm_decision_s": 1.5,
+    "delai_decision_s": 2.5,  # addendum n°1 révisé : le LLM du motif a 2 s, 0,5 s pour le repli
+    "delai_llm_decision_s": 2.0,
     "delai_analyse_s": 2,  # addendum n°3 : 0,8 s faisait expirer le LLM réel (0,5 à 1,2 s)
     "delai_llm_analyse_s": 1.7,  # sous le délai de l'étape : l'agent publie « indisponible » lui-même
 }

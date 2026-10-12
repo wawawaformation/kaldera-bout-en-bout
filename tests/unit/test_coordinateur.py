@@ -225,7 +225,7 @@ def lancer_avec_description(**remplacements: Any) -> dict[str, Any]:
 
 def test_bornes_de_l_addendum() -> None:
     b = bornes()
-    assert (b["etapes_max"], b["delai_decision_s"]) == (9, 2)
+    assert (b["etapes_max"], b["delai_decision_s"]) == (9, 2.5)
 
 
 def test_analyse_description_dans_la_fourche_si_description_non_vide() -> None:
@@ -292,7 +292,7 @@ def test_delais_par_etape() -> None:
     import kaldera.coordinateur as c
 
     assert (
-        c._delai("decision") == 2 and c._delai("pieces") == 1 and c._delai("passerelle_fraude") == 3
+        c._delai("decision") == 2.5 and c._delai("pieces") == 1 and c._delai("passerelle_fraude") == 3
     )
     assert (
         c._delai("analyse_description") == 2
@@ -305,7 +305,7 @@ def test_le_llm_de_l_analyse_est_abandonne_avant_la_fin_de_l_etape() -> None:
 
 
 def test_pire_cas_theorique_depasse_10_s_et_la_garde_de_duree_le_couvre() -> None:
-    """Chaque étape au bout de son délai : fourche 2 s + 3 tours + estimation + passerelle + decision = 11 s.
+    """Chaque étape au bout de son délai : fourche 2 s + 3 tours + estimation + passerelle + decision = 11,5 s.
     En pratique les agents de code répondent en millisecondes ; la garde de durée tranche sinon (X6)."""
     b = bornes()
     pire = (
@@ -314,4 +314,4 @@ def test_pire_cas_theorique_depasse_10_s_et_la_garde_de_duree_le_couvre() -> Non
         + b["delai_passerelle_s"]
         + b["delai_decision_s"]
     )
-    assert pire == 11 and pire > b["duree_max_s"]
+    assert pire == 11.5 and pire > b["duree_max_s"]

@@ -141,7 +141,7 @@ def _reformuler(issue: dict[str, Any], llm: Llm, delai_s: float) -> str:
 
 
 def decider(
-    vue: dict[str, Any], llm: Llm | None = None, delai_llm_s: float = 1.5
+    vue: dict[str, Any], llm: Llm | None = None, delai_llm_s: float = 2.0
 ) -> dict[str, Any]:
     """Conclut la demande ; en cas d'échec interne, écrit un X6 de secours (gabarit constant).
 
